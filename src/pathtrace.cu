@@ -14,11 +14,13 @@
 #include "utilities.h"
 #include "intersections.h"
 #include "interactions.h"
+#include "settings.h"
 
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+
 void checkCUDAErrorFn(const char* msg, const char* file, int line)
 {
 #if ERRORCHECK
@@ -246,6 +248,8 @@ __global__ void shadeMaterial(
     ShadeableIntersection intersection = shadeableIntersections[idx];
     PathSegment* pathSegment = pathSegments + idx; 
 
+    if (pathSegment->shouldTerminate) return; 
+
     if (intersection.t <= 0.0f || pathSegment->remainingBounces <= 0) {
         // miss or out of bounces
         pathSegment->color = glm::vec3(0.0f);
@@ -403,9 +407,10 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_materials
             );
 
-        
-        PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, is_active());
-        num_paths = static_cast<int>(mid - dev_paths); 
+        if (g_settings.enableStreamCompaction) {
+            PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, is_active());
+            num_paths = static_cast<int>(mid - dev_paths);
+        }
         
         iterationComplete = (num_paths == 0 || ++depth > traceDepth); 
         guiData ? guiData->TracedDepth = depth : 0;
