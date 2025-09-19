@@ -66,8 +66,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.type = MaterialType::TRANSMISSIVE; 
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-            const auto& ior = p["IOR"];
-            newMaterial.indexOfRefraction = ior;
+            newMaterial.indexOfRefraction = p["IOR"];
         }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
