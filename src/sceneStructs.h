@@ -33,6 +33,13 @@ struct Geom
     glm::mat4 invTranspose;
 };
 
+enum MaterialType 
+{
+    DIFFUSE, 
+    SPECULAR, 
+    TRANSMISSIVE 
+};
+
 struct Material
 {
     glm::vec3 color;
@@ -74,6 +81,7 @@ struct PathSegment
     glm::vec3 color;
     int pixelIndex;
     int remainingBounces;
+    bool shouldTerminate; 
 };
 
 // Use with a corresponding PathSegment to do:
