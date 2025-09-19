@@ -15,7 +15,6 @@
 #include "intersections.h"
 #include "interactions.h"
 
-#define M_PI 3.141592653589
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -261,26 +260,79 @@ __global__ void shadeMaterial(
     Material material = materials[intersection.materialId];
     glm::vec3 materialColor = material.color;
 
-    // If the material indicates that the object was a light, "light" the ray
-    if (material.emittance > 0.0f) {
-        pathSegment->color *= (materialColor * material.emittance);
-        pathSegment->shouldTerminate = true; 
+    switch (material.type) {
+    case MaterialType::EMISSIVE:
+        pathSegment->color *= material.color * material.emittance;
+        pathSegment->shouldTerminate = true;
+        return;
+
+    case MaterialType::DIFFUSE: {
+        glm::vec3 n = intersection.surfaceNormal;
+        glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
+        float cosIn = glm::max(0.f, dot(n, wi));
+        float pdf = cosIn / glm::pi<float>();
+        glm::vec3 f = material.color / glm::pi<float>();
+        pathSegment->color *= f * (cosIn / pdf);
+        glm::vec3 hitP = pathSegment->ray.origin +
+            pathSegment->ray.direction * intersection.t;
+        pathSegment->ray.origin = hitP + n * EPSILON;
+        pathSegment->ray.direction = wi;
+        --pathSegment->remainingBounces;
         return;
     }
-    
-    // shade as diffuse surface
-    glm::vec3 n = intersection.surfaceNormal; 
-    glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
-    float cosIn = glm::max(0.f, dot(n, wi));
-    float pdf = cosIn / M_PI; 
-    glm::vec3 f = material.color / glm::vec3(M_PI); // lambertian color
 
-    pathSegment->color *= f * (cosIn / pdf);
+    case MaterialType::SPECULAR: {
+        pathSegment->color *= material.color;
 
-    glm::vec3 hitP = pathSegment->ray.origin + pathSegment->ray.direction * intersection.t;
-    pathSegment->ray.origin = hitP + n * EPSILON;
-    pathSegment->ray.direction = wi;
-    --pathSegment->remainingBounces;
+        // reflect the ray
+        glm::vec3 n = intersection.surfaceNormal;
+        glm::vec3 wi = glm::reflect(pathSegment->ray.direction, n);
+        glm::vec3 hitP = pathSegment->ray.origin +
+            pathSegment->ray.direction * intersection.t;
+        pathSegment->ray.origin = hitP + n * EPSILON;
+        pathSegment->ray.direction = wi;
+        --pathSegment->remainingBounces;
+        return;
+    }
+
+    case MaterialType::TRANSMISSIVE: {
+        // Hard-coded air glass
+        const float etaA = 1.0f;
+        const float etaB = material.indexOfRefraction;  // e.g., 1.55
+
+        glm::vec3 n = glm::normalize(intersection.surfaceNormal);
+        glm::vec3 I = glm::normalize(pathSegment->ray.direction); 
+        glm::vec3 wo = -I; 
+
+        const bool entering = glm::dot(wo, n) > 0.0f;
+        glm::vec3 orientedN = entering ? n : -n;
+
+        const float etaI = entering ? etaA : etaB;
+        const float etaT = entering ? etaB : etaA;
+        const float eta = etaI / etaT;
+
+        glm::vec3 wi = glm::refract(I, orientedN, eta);
+
+        glm::vec3 hitP = pathSegment->ray.origin + pathSegment->ray.direction * intersection.t;
+
+        if (glm::length2(wi) == 0.0f) {
+            wi = glm::reflect(I, orientedN);
+            pathSegment->ray.origin = hitP + orientedN * EPSILON;
+            pathSegment->ray.direction = glm::normalize(wi);
+        }
+        else {
+            pathSegment->ray.origin = hitP - orientedN * EPSILON;
+            pathSegment->ray.direction = glm::normalize(wi);
+        }
+
+        --pathSegment->remainingBounces;
+        return;
+    }
+
+    default:
+        pathSegment->shouldTerminate = true;
+        return;
+    }
 }
 
 // Add the current iteration's output to the overall image

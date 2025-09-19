@@ -47,7 +47,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.type = MaterialType::DIFFUSE;
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-        }
+        } 
         else if (p["TYPE"] == "Emitting")
         {
             newMaterial.type = MaterialType::EMISSIVE;
@@ -61,7 +61,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
         }
-        else if (p["TYPE" == "Transmissive"]) 
+        else if (p["TYPE"] == "Transmissive") 
         {
             newMaterial.type = MaterialType::TRANSMISSIVE; 
             const auto& col = p["RGB"];
