@@ -42,22 +42,32 @@ void Scene::loadFromJSON(const std::string& jsonName)
         const auto& name = item.key();
         const auto& p = item.value();
         Material newMaterial{};
-        // TODO: handle materials loading differently
         if (p["TYPE"] == "Diffuse")
         {
+            newMaterial.type = MaterialType::DIFFUSE;
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
         }
         else if (p["TYPE"] == "Emitting")
         {
+            newMaterial.type = MaterialType::EMISSIVE;
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
             newMaterial.emittance = p["EMITTANCE"];
         }
         else if (p["TYPE"] == "Specular")
         {
+            newMaterial.type = MaterialType::SPECULAR; 
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+        }
+        else if (p["TYPE" == "Transmissive"]) 
+        {
+            newMaterial.type = MaterialType::TRANSMISSIVE; 
+            const auto& col = p["RGB"];
+            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            const auto& ior = p["IOR"];
+            newMaterial.indexOfRefraction = ior;
         }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);

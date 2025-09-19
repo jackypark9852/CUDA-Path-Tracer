@@ -33,8 +33,9 @@ struct Geom
     glm::mat4 invTranspose;
 };
 
-enum MaterialType 
+enum class MaterialType 
 {
+    EMISSIVE, 
     DIFFUSE, 
     SPECULAR, 
     TRANSMISSIVE 
@@ -42,6 +43,7 @@ enum MaterialType
 
 struct Material
 {
+    MaterialType type; 
     glm::vec3 color;
     struct
     {
