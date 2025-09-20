@@ -15,6 +15,20 @@
 #define SQRT_OF_ONE_THIRD 0.5773502691896257645091487805019574556476f
 #define EPSILON           0.000005f
 
+#define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+
+#ifndef __INTELLISENSE__
+#define KERNEL_ARGS2(grid, block)                 <<< grid, block >>>
+#define KERNEL_ARGS3(grid, block, sh_mem)         <<< grid, block, sh_mem >>>
+#define KERNEL_ARGS4(grid, block, sh_mem, stream) <<< grid, block, sh_mem, stream >>>
+#else
+#define KERNEL_ARGS2(grid, block)
+#define KERNEL_ARGS3(grid, block, sh_mem)
+#define KERNEL_ARGS4(grid, block, sh_mem, stream)
+#endif
+
+
 class GuiDataContainer
 {
 public:

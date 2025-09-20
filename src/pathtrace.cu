@@ -3,23 +3,20 @@
 #include <cstdio>
 #include <cuda.h>
 #include <cmath>
+#include "device_launch_parameters.h"
+#include "utilities.h"
+#include "intersections.h"
+#include "interactions.h"
+#include "sceneStructs.h"
+#include "scene.h"
+#include "settings.h"
+#include "shading/shading_common.cuh" 
+#include "shading/shading_kernels.cuh"
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/partition.h>
 
-#include "sceneStructs.h"
-#include "scene.h"
-#include "glm/glm.hpp"
-#include "glm/gtx/norm.hpp"
-#include "utilities.h"
-#include "intersections.h"
-#include "interactions.h"
-#include "settings.h"
-
 #define ERRORCHECK 1
-
-#define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 
 void checkCUDAErrorFn(const char* msg, const char* file, int line)
 {
@@ -42,13 +39,6 @@ void checkCUDAErrorFn(const char* msg, const char* file, int line)
 #endif // _WIN32
     exit(EXIT_FAILURE);
 #endif // ERRORCHECK
-}
-
-__host__ __device__
-thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth)
-{
-    int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
-    return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -235,110 +225,6 @@ __global__ void computeIntersections(
     }
 }
 
-__global__ void shadeMaterial(
-    int iter,
-    int num_paths,
-    ShadeableIntersection* shadeableIntersections,
-    PathSegment* pathSegments,
-    Material* materials)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_paths) return; 
-
-    ShadeableIntersection intersection = shadeableIntersections[idx];
-    PathSegment* pathSegment = pathSegments + idx; 
-
-    if (pathSegment->shouldTerminate) return; 
-
-    if (intersection.t <= 0.0f || pathSegment->remainingBounces <= 0) {
-        // miss or out of bounces
-        pathSegment->color = glm::vec3(0.0f);
-        pathSegment->shouldTerminate = true;
-        return;
-    }
-
-    // Set up the RNG
-    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegment->remainingBounces);
-    thrust::uniform_real_distribution<float> u01(0, 1);
-
-    Material material = materials[intersection.materialId];
-    glm::vec3 materialColor = material.color;
-
-    switch (material.type) {
-    case MaterialType::EMISSIVE:
-        pathSegment->color *= material.color * material.emittance;
-        pathSegment->shouldTerminate = true;
-        return;
-
-    case MaterialType::DIFFUSE: {
-        glm::vec3 n = intersection.surfaceNormal;
-        glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
-        float cosIn = glm::max(0.f, dot(n, wi));
-        float pdf = cosIn / glm::pi<float>();
-        glm::vec3 f = material.color / glm::pi<float>();
-        pathSegment->color *= f * (cosIn / pdf);
-        glm::vec3 hitP = pathSegment->ray.origin +
-            pathSegment->ray.direction * intersection.t;
-        pathSegment->ray.origin = hitP + n * EPSILON;
-        pathSegment->ray.direction = wi;
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    case MaterialType::SPECULAR: {
-        pathSegment->color *= material.color;
-
-        // reflect the ray
-        glm::vec3 n = intersection.surfaceNormal;
-        glm::vec3 wi = glm::reflect(pathSegment->ray.direction, n);
-        glm::vec3 hitP = pathSegment->ray.origin +
-            pathSegment->ray.direction * intersection.t;
-        pathSegment->ray.origin = hitP + n * EPSILON;
-        pathSegment->ray.direction = wi;
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    case MaterialType::TRANSMISSIVE: {
-        // Hard-coded air glass
-        const float etaA = 1.0f;
-        const float etaB = material.indexOfRefraction;  // e.g., 1.55
-
-        glm::vec3 n = glm::normalize(intersection.surfaceNormal);
-        glm::vec3 I = glm::normalize(pathSegment->ray.direction); 
-        glm::vec3 wo = -I; 
-
-        const bool entering = glm::dot(wo, n) > 0.0f;
-        glm::vec3 orientedN = entering ? n : -n;
-
-        const float etaI = entering ? etaA : etaB;
-        const float etaT = entering ? etaB : etaA;
-        const float eta = etaI / etaT;
-
-        glm::vec3 wi = glm::refract(I, orientedN, eta);
-
-        glm::vec3 hitP = pathSegment->ray.origin + pathSegment->ray.direction * intersection.t;
-
-        if (glm::length2(wi) == 0.0f) {
-            wi = glm::reflect(I, orientedN);
-            pathSegment->ray.origin = hitP + orientedN * EPSILON;
-            pathSegment->ray.direction = glm::normalize(wi);
-        }
-        else {
-            pathSegment->ray.origin = hitP - orientedN * EPSILON;
-            pathSegment->ray.direction = glm::normalize(wi);
-        }
-
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    default:
-        pathSegment->shouldTerminate = true;
-        return;
-    }
-}
-
 // Add the current iteration's output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
 {
@@ -368,7 +254,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     // 1D block for path tracing
     const int blockSize1d = 128;
 
-    generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths);
+    generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
 
     int depth = 0;
@@ -386,7 +272,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         // tracing
         dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
-        computeIntersections<<<numblocksPathSegmentTracing, blockSize1d>>> (
+        computeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (
             depth,
             num_paths,
             dev_paths,
@@ -399,7 +285,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
 
         int blocks = (num_paths + blockSize1d - 1) / blockSize1d;
-        shadeMaterial << <blocks, blockSize1d >> > (
+        shadePerfectMaterial KERNEL_ARGS2(blocks, blockSize1d) (
             iter,
             num_paths,
             dev_intersections,
@@ -418,12 +304,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_image, dev_paths);
+    finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_image, dev_paths);
 
     ///////////////////////////////////////////////////////////////////////////
 
     // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_image);
 
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,

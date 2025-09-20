@@ -38,7 +38,8 @@ enum class MaterialType
     EMISSIVE, 
     DIFFUSE, 
     SPECULAR, 
-    TRANSMISSIVE 
+    TRANSMISSIVE, 
+    PBR
 };
 
 struct Material
@@ -54,6 +55,8 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+
+    // BxDF Parameters
 };
 
 struct Camera
