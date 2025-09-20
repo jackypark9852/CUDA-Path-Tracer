@@ -85,6 +85,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.type = SPHERE;
         }
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
+        newGeom.materialType = materials.at(newGeom.materialid).type; 
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];
         const auto& scale = p["SCALE"];

@@ -1,13 +1,39 @@
 #pragma once
 
 #include <cuda_runtime.h>
-
 #include "glm/glm.hpp"
-
 #include <string>
 #include <vector>
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
+
+enum class MaterialType
+{
+    INVALID = 0, 
+    EMISSIVE,
+    DIFFUSE,
+    SPECULAR,
+    TRANSMISSIVE,
+    PBR, 
+    COUNT 
+};
+
+struct Material
+{
+    MaterialType type;
+    glm::vec3 color;
+    struct
+    {
+        float exponent;
+        glm::vec3 color;
+    } specular;
+    float hasReflective;
+    float hasRefractive;
+    float indexOfRefraction;
+    float emittance;
+
+    // BxDF Parameters
+};
 
 enum GeomType
 {
@@ -24,39 +50,14 @@ struct Ray
 struct Geom
 {
     enum GeomType type;
-    int materialid;
+    int materialid; 
+    MaterialType materialType; 
     glm::vec3 translation;
     glm::vec3 rotation;
     glm::vec3 scale;
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
-};
-
-enum class MaterialType 
-{
-    EMISSIVE, 
-    DIFFUSE, 
-    SPECULAR, 
-    TRANSMISSIVE, 
-    PBR
-};
-
-struct Material
-{
-    MaterialType type; 
-    glm::vec3 color;
-    struct
-    {
-        float exponent;
-        glm::vec3 color;
-    } specular;
-    float hasReflective;
-    float hasRefractive;
-    float indexOfRefraction;
-    float emittance;
-
-    // BxDF Parameters
 };
 
 struct Camera
@@ -96,5 +97,6 @@ struct ShadeableIntersection
 {
   float t;
   glm::vec3 surfaceNormal;
+  MaterialType materialType; 
   int materialId;
 };

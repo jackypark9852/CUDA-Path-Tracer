@@ -2,6 +2,7 @@
 #include <cuda.h>
 #include <cmath>
 
+#include "device_launch_parameters.h"
 #include "glm/glm.hpp"
 #include "glm/gtx/norm.hpp"
 #include "shading_kernels.cuh"

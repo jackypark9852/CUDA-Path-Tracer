@@ -72,6 +72,10 @@ static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
+static int* dev_startIdx = NULL; 
+static int* dev_endIdx = NULL; 
+static int* hst_startIdx = NULL; 
+static int* hst_endIdx = NULL;
 
 struct is_active {
     __host__ __device__
@@ -107,7 +111,11 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
-    // TODO: initialize any extra device memeory you need
+    cudaMalloc(&dev_startIdx, static_cast<int>(MaterialType::COUNT) * sizeof(int));
+    cudaMalloc(&dev_endIdx, static_cast<int>(MaterialType::COUNT) * sizeof(int));
+
+    hst_startIdx = new int[static_cast<int>(MaterialType::COUNT)];
+    hst_endIdx = new int[static_cast<int>(MaterialType::COUNT)];
 
     checkCUDAError("pathtraceInit");
 }
@@ -119,7 +127,12 @@ void pathtraceFree()
     cudaFree(dev_geoms);
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
-    // TODO: clean up any extra device memory you created
+
+    cudaFree(dev_startIdx); 
+    cudaFree(dev_endIdx); 
+
+    delete[] hst_startIdx; 
+    delete[] hst_endIdx; 
 
     checkCUDAError("pathtraceFree");
 }
@@ -162,15 +175,15 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 // Feel free to modify the code below.
 __global__ void computeIntersections(
     int depth,
-    int num_paths,
+    int numPaths,
     PathSegment* pathSegments,
     Geom* geoms,
-    int geoms_size,
+    int geomsSize,
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (path_index < num_paths)
+    if (path_index < numPaths)
     {
         PathSegment pathSegment = pathSegments[path_index];
 
@@ -186,7 +199,7 @@ __global__ void computeIntersections(
 
         // naive parse through global geoms
 
-        for (int i = 0; i < geoms_size; i++)
+        for (int i = 0; i < geomsSize; i++)
         {
             Geom& geom = geoms[i];
 
@@ -220,8 +233,62 @@ __global__ void computeIntersections(
             // The ray hits something
             intersections[path_index].t = t_min;
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+            intersections[path_index].materialType = geoms[hit_geom_index].materialType; 
             intersections[path_index].surfaceNormal = normal;
         }
+    }
+}
+
+
+
+// comparator for material sorting
+struct IsectKeyLess {
+    __host__ __device__
+        bool operator()(const ShadeableIntersection& a,
+            const ShadeableIntersection& b) const
+    {
+        const bool aMiss = (a.t < -EPSILON);
+        const bool bMiss = (b.t < -EPSILON);
+
+        // hits before miss
+        if (aMiss != bMiss) return !aMiss;
+
+        // both hits, then sort by material id
+
+        if (!aMiss) {
+            if (a.materialType != b.materialType) return a.materialType < b.materialType;
+            return a.t < b.t;
+        }
+
+        // both misses, just sort based on distance
+        return a.t < b.t;
+    }
+};
+
+__global__ void kernResetIntBuffer(int N, int* intBuffer, int value) {
+    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+    if (index < N) {
+        intBuffer[index] = value;
+    }
+}
+
+__global__ void kernIdentifyMaterialTypeStartEnd(int numPaths, const ShadeableIntersection* intersections,
+    int* matTypeStartIndices, int* matTypeEndIndices) {
+    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+    if (index >= numPaths) {
+        return;
+    }
+
+    MaterialType curMatType = intersections[index].materialType;
+    MaterialType prevMatType = (index > 0) ? intersections[index - 1].materialType : MaterialType::INVALID;
+    MaterialType nexrMatType = (index < (numPaths - 1)) ? intersections[index - 1].materialType : MaterialType::INVALID;
+
+    if (curMatType != MaterialType::INVALID && curMatType != prevMatType) {
+        matTypeStartIndices[static_cast<int>(curMatType)] = index;
+    }
+
+    if (curMatType != MaterialType::INVALID && curMatType != nexrMatType) {
+        matTypeEndIndices[static_cast<int>(curMatType)] = index;
     }
 }
 
@@ -244,6 +311,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+    
 
     // 2D block for generating ray from camera
     const dim3 blockSize2d(8, 8);
@@ -259,7 +327,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     int depth = 0;
     PathSegment* dev_path_end = dev_paths + pixelcount;
-    int num_paths = dev_path_end - dev_paths;
+    int numPaths = dev_path_end - dev_paths;
 
     // --- PathSegment Tracing Stage ---
     // Shoot ray into scene, bounce between objects, push shading chunks
@@ -271,10 +339,10 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
         // tracing
-        dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
+        dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
         computeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (
             depth,
-            num_paths,
+            numPaths,
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
@@ -282,23 +350,35 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
+        
+        // material sorting 
+        if (g_settings.enableMaterialSorting) {
+            thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + numPaths, dev_paths, IsectKeyLess());
+        }
+        int materialTypeCount = static_cast<int>(MaterialType::COUNT); 
+        dim3 numblocksMaterialType = (materialTypeCount + blockSize1d - 1) / blockSize1d;
+        kernResetIntBuffer KERNEL_ARGS2(numblocksMaterialType, blockSize1d)(materialTypeCount, dev_startIdx, -1); 
+        kernResetIntBuffer KERNEL_ARGS2(numblocksMaterialType, blockSize1d)(materialTypeCount, dev_endIdx, -1);
 
+        kernIdentifyMaterialTypeStartEnd KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (numPaths, dev_intersections, dev_startIdx, dev_endIdx); 
+        cudaMemcpy(hst_startIdx, dev_startIdx, materialTypeCount, cudaMemcpyDeviceToHost); 
+        cudaMemcpy(hst_endIdx, dev_endIdx, materialTypeCount, cudaMemcpyDeviceToHost);
 
-        int blocks = (num_paths + blockSize1d - 1) / blockSize1d;
+        int blocks = (numPaths + blockSize1d - 1) / blockSize1d;
         shadePerfectMaterial KERNEL_ARGS2(blocks, blockSize1d) (
             iter,
-            num_paths,
+            numPaths,
             dev_intersections,
             dev_paths,
             dev_materials
             );
 
         if (g_settings.enableStreamCompaction) {
-            PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, is_active());
-            num_paths = static_cast<int>(mid - dev_paths);
+            PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + numPaths, is_active());
+            numPaths = static_cast<int>(mid - dev_paths);
         }
         
-        iterationComplete = (num_paths == 0 || ++depth > traceDepth); 
+        iterationComplete = (numPaths == 0 || ++depth > traceDepth); 
         guiData ? guiData->TracedDepth = depth : 0;
     }
 
