@@ -5,6 +5,8 @@
 #include <cmath>
 #include <thrust/random.h>
 
+#include "glm/gtx/norm.hpp"
+
 __forceinline__ __device__ float CosTheta(const glm::vec3& w) { return w.z; }
 __forceinline__ __device__ float Cos2Theta(const glm::vec3& w) { float c = w.z; return c * c; }
 __forceinline__ __device__ float Sin2Theta(const glm::vec3& w) { float c = w.z; return fmaxf(0.f, 1.f - c * c); }

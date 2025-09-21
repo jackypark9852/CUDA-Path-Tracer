@@ -1,22 +1,15 @@
 #include <cstdio>
 #include <cuda.h>
 #include <cmath>
+#include <thrust/random.h>
+
+#include "../utilities.h"
 
 #include "device_launch_parameters.h"
 #include "glm/glm.hpp"
 #include "glm/gtx/norm.hpp"
 #include "shading_kernels.cuh"
 #include "shading_common.cuh" 
-#include <thrust/random.h>
-#include "../utilities.h"
-
-__host__ __device__
-thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth)
-{
-    int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
-    return thrust::default_random_engine(h);
-};
-
 
 __global__ void shadePbrMaterial(
     int iter,
@@ -71,103 +64,43 @@ __global__ void shadePbrMaterial(
     return;
 }
 
-__global__ void shadePerfectMaterial(
-    int iter,
-    int num_paths,
-    ShadeableIntersection* shadeableIntersections,
-    PathSegment* pathSegments,
-    Material* materials)
-{
+__global__ void kernShadeEmissive(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_paths) return;
+    if (idx < n) shadeEmissive_impl(iter, idx, s, p, m);
+}
+__global__ void kernShadeDiffuse(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) shadeDiffuse_impl(iter, idx, s, p, m);
+}
+__global__ void kernShadeSpecular(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) shadeSpecular_impl(iter, idx, s, p, m);
+}
+__global__ void kernShadeTransmissive(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) shadeTransmissive_impl(iter, idx, s, p, m);
+}
 
-    ShadeableIntersection intersection = shadeableIntersections[idx];
-    PathSegment* pathSegment = pathSegments + idx;
+__global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n) return;
 
-    if (pathSegment->shouldTerminate) return;
+    PathSegment* seg = p + idx;
+    if (seg->shouldTerminate) return;
 
-    if (intersection.t <= 0.0f || pathSegment->remainingBounces <= 0) {
-        // miss or out of bounces
-        pathSegment->color = glm::vec3(0.0f);
-        pathSegment->shouldTerminate = true;
+    ShadeableIntersection isect = s[idx];
+    if (isect.t <= 0.0f || seg->remainingBounces <= 0) {
+        seg->color = glm::vec3(0.0f);
+        seg->shouldTerminate = true;
         return;
     }
 
-    // Set up the RNG
-    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegment->remainingBounces);
-    thrust::uniform_real_distribution<float> u01(0, 1);
-
-    Material material = materials[intersection.materialId];
-    glm::vec3 materialColor = material.color;
-
-    switch (material.type) {
-    case MaterialType::EMISSIVE:
-        pathSegment->color *= material.color * material.emittance;
-        pathSegment->shouldTerminate = true;
-        return;
-
-    case MaterialType::DIFFUSE: {
-        glm::vec3 n = intersection.surfaceNormal;
-        glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
-        pathSegment->color *= material.color;
-        glm::vec3 hitP = pathSegment->ray.origin +
-            pathSegment->ray.direction * intersection.t;
-        pathSegment->ray.origin = hitP + n * EPSILON;
-        pathSegment->ray.direction = wi;
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    case MaterialType::SPECULAR: {
-        pathSegment->color *= material.color;
-
-        // reflect the ray
-        glm::vec3 n = intersection.surfaceNormal;
-        glm::vec3 wi = glm::reflect(pathSegment->ray.direction, n);
-        glm::vec3 hitP = pathSegment->ray.origin +
-            pathSegment->ray.direction * intersection.t;
-        pathSegment->ray.origin = hitP + n * EPSILON;
-        pathSegment->ray.direction = wi;
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    case MaterialType::TRANSMISSIVE: {
-        // Hard-coded air glass
-        const float etaA = 1.0f;
-        const float etaB = material.indexOfRefraction;  // e.g., 1.55
-
-        glm::vec3 n = glm::normalize(intersection.surfaceNormal);
-        glm::vec3 I = glm::normalize(pathSegment->ray.direction);
-        glm::vec3 wo = -I;
-
-        const bool entering = glm::dot(wo, n) > 0.0f;
-        glm::vec3 orientedN = entering ? n : -n;
-
-        const float etaI = entering ? etaA : etaB;
-        const float etaT = entering ? etaB : etaA;
-        const float eta = etaI / etaT;
-
-        glm::vec3 wi = glm::refract(I, orientedN, eta);
-
-        glm::vec3 hitP = pathSegment->ray.origin + pathSegment->ray.direction * intersection.t;
-
-        if (glm::length2(wi) == 0.0f) {
-            wi = glm::reflect(I, orientedN);
-            pathSegment->ray.origin = hitP + orientedN * EPSILON;
-            pathSegment->ray.direction = glm::normalize(wi);
-        }
-        else {
-            pathSegment->ray.origin = hitP - orientedN * EPSILON;
-            pathSegment->ray.direction = glm::normalize(wi);
-        }
-
-        --pathSegment->remainingBounces;
-        return;
-    }
-
-    default:
-        pathSegment->shouldTerminate = true;
-        return;
+    Material mat = m[isect.materialId];
+    switch (mat.type) {
+        case MaterialType::EMISSIVE:      shadeEmissive_impl(iter, idx, s, p, m);      break;
+        case MaterialType::DIFFUSE:       shadeDiffuse_impl(iter, idx, s, p, m);       break;
+        case MaterialType::SPECULAR:      shadeSpecular_impl(iter, idx, s, p, m);      break;
+        case MaterialType::TRANSMISSIVE:  shadeTransmissive_impl(iter, idx, s, p, m);  break;
+        default: seg->shouldTerminate = true; break;
     }
 }

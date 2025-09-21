@@ -185,7 +185,7 @@ __global__ void computeIntersections(
 
     if (path_index < numPaths)
     {
-        PathSegment pathSegment = pathSegments[path_index];
+        PathSegment& pathSegment = pathSegments[path_index];
 
         float t;
         glm::vec3 intersect_point;
@@ -227,6 +227,9 @@ __global__ void computeIntersections(
         if (hit_geom_index == -1)
         {
             intersections[path_index].t = -1.0f;
+            intersections[path_index].materialType = MaterialType::INVALID; 
+            pathSegment.color = glm::vec3(0.f, 0.f, 0.f); 
+            pathSegment.shouldTerminate = true;
         }
         else
         {
@@ -281,13 +284,13 @@ __global__ void kernIdentifyMaterialTypeStartEnd(int numPaths, const ShadeableIn
 
     MaterialType curMatType = intersections[index].materialType;
     MaterialType prevMatType = (index > 0) ? intersections[index - 1].materialType : MaterialType::INVALID;
-    MaterialType nexrMatType = (index < (numPaths - 1)) ? intersections[index - 1].materialType : MaterialType::INVALID;
+    MaterialType nextMatType = (index < (numPaths - 1)) ? intersections[index + 1].materialType : MaterialType::INVALID;
 
     if (curMatType != MaterialType::INVALID && curMatType != prevMatType) {
         matTypeStartIndices[static_cast<int>(curMatType)] = index;
     }
 
-    if (curMatType != MaterialType::INVALID && curMatType != nexrMatType) {
+    if (curMatType != MaterialType::INVALID && curMatType != nextMatType) {
         matTypeEndIndices[static_cast<int>(curMatType)] = index;
     }
 }
@@ -300,6 +303,70 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
 
     PathSegment iterationPath = iterationPaths[index];
     image[iterationPath.pixelIndex] += iterationPath.color; 
+}
+
+static void MaterialSortAndShade(
+    int iter,
+    int numPaths,
+    int blockSize1d,
+    ShadeableIntersection* dev_intersections,
+    PathSegment* dev_paths,
+    Material* dev_materials,
+    int* dev_startIdx,
+    int* dev_endIdx,
+    int* hst_startIdx,
+    int* hst_endIdx)
+{
+    thrust::sort_by_key(
+        thrust::device,
+        dev_intersections,
+        dev_intersections + numPaths,
+        dev_paths,
+        IsectKeyLess());
+
+    const int materialTypeCount = static_cast<int>(MaterialType::COUNT);
+    const dim3 blocksMat((materialTypeCount + blockSize1d - 1) / blockSize1d);
+    kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_startIdx, -1);
+    kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_endIdx, -1);
+
+    const dim3 blocksTrace((numPaths + blockSize1d - 1) / blockSize1d);
+    kernIdentifyMaterialTypeStartEnd KERNEL_ARGS2(blocksTrace, blockSize1d)(
+        numPaths, dev_intersections, dev_startIdx, dev_endIdx);
+
+    cudaMemcpy(hst_startIdx, dev_startIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hst_endIdx, dev_endIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost);
+
+    for (int mt = 0; mt < materialTypeCount; ++mt) {
+        const int start = hst_startIdx[mt];
+        const int end = hst_endIdx[mt];
+
+        if (start < 0 || end < start) continue;
+
+        const int count = end - start + 1;
+        ShadeableIntersection* isectSlice = dev_intersections + start;
+        PathSegment* pathSlice = dev_paths + start;
+
+        const int blocksRange = (count + blockSize1d - 1) / blockSize1d;
+
+        switch (static_cast<MaterialType>(mt)) {
+        case MaterialType::EMISSIVE:
+            kernShadeEmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            break;
+        case MaterialType::DIFFUSE:
+            kernShadeDiffuse KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            break;
+        case MaterialType::SPECULAR:
+            kernShadeSpecular KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            break;
+        case MaterialType::TRANSMISSIVE:
+            kernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            break;
+        case MaterialType::PBR:
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 /**
@@ -353,26 +420,22 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         
         // material sorting 
         if (g_settings.enableMaterialSorting) {
-            thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + numPaths, dev_paths, IsectKeyLess());
+            MaterialSortAndShade(iter, numPaths, blockSize1d,
+                dev_intersections, dev_paths, dev_materials,
+                dev_startIdx, dev_endIdx, hst_startIdx, hst_endIdx);
         }
-        int materialTypeCount = static_cast<int>(MaterialType::COUNT); 
-        dim3 numblocksMaterialType = (materialTypeCount + blockSize1d - 1) / blockSize1d;
-        kernResetIntBuffer KERNEL_ARGS2(numblocksMaterialType, blockSize1d)(materialTypeCount, dev_startIdx, -1); 
-        kernResetIntBuffer KERNEL_ARGS2(numblocksMaterialType, blockSize1d)(materialTypeCount, dev_endIdx, -1);
-
-        kernIdentifyMaterialTypeStartEnd KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (numPaths, dev_intersections, dev_startIdx, dev_endIdx); 
-        cudaMemcpy(hst_startIdx, dev_startIdx, materialTypeCount, cudaMemcpyDeviceToHost); 
-        cudaMemcpy(hst_endIdx, dev_endIdx, materialTypeCount, cudaMemcpyDeviceToHost);
-
-        int blocks = (numPaths + blockSize1d - 1) / blockSize1d;
-        shadePerfectMaterial KERNEL_ARGS2(blocks, blockSize1d) (
-            iter,
-            numPaths,
-            dev_intersections,
-            dev_paths,
-            dev_materials
-            );
-
+        else { 
+            // use all in one solution for shading 
+            const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
+            kernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
+                iter,
+                numPaths,
+                dev_intersections,
+                dev_paths,
+                dev_materials
+                );
+        }
+        
         if (g_settings.enableStreamCompaction) {
             PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + numPaths, is_active());
             numPaths = static_cast<int>(mid - dev_paths);
