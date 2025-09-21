@@ -68,13 +68,23 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.ior = p["IOR"];
         }
-        else if (p["TYPE"] == "METALLIC")
+        else if (p["TYPE"] == "Metallic")
         {
             newMaterial.type = MaterialType::METALLIC; 
             const auto& col = p["RGB"]; 
             newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.emittance = p["EMITTANCE"];
+            newMaterial.ior = p["IOR"]; 
+            newMaterial.emittance = p["EMITTANCE"]; 
+            newMaterial.metallic = p["METALLIC"];
+            newMaterial.roughness = p["ROUGHNESS"];
+        }
+        else if (p["TYPE"] == "Dielectric")
+        {
+            newMaterial.type = MaterialType::DIELECTRIC;
+            const auto& col = p["RGB"];
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.ior = p["IOR"];
+            newMaterial.emittance = p["EMITTANCE"];
             newMaterial.metallic = p["METALLIC"];
             newMaterial.roughness = p["ROUGHNESS"];
         }

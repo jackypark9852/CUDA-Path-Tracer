@@ -1,0 +1,114 @@
+{
+    "Materials": {
+        "mat_00": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.02 },
+        "mat_01": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.216 },
+        "mat_02": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.412 },
+        "mat_03": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.608 },
+        "mat_04": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.804 },
+        "mat_05": { "TYPE": " Metallic", "RGB   ": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 1.0 },
+        "mat_06": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 1.2 },
+
+        "mat_10": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.02 },
+        "mat_11": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.216 },
+        "mat_12": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.412 },
+        "mat_13": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.608 },
+        "mat_14": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.804 },
+        "mat_15": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 1.0 },
+        "mat_16": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 1.4 },
+
+        "mat_20": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 0.02 },
+        "mat_21": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 0.216 },
+        "mat_22": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 0.412 },
+        "mat_23": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 0.608 },
+        "mat_24": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 0.804 },
+        "mat_25": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.4, "ROUGHNESS": 1.0 },
+        "mat_26": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 1.6 },
+
+        "mat_30": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 0.02 },
+        "mat_31": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 0.216 },
+        "mat_32": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 0.412 },
+        "mat_33": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 0.608 },
+        "mat_34": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 0.804 },
+        "mat_35": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.6, "ROUGHNESS": 1.0 },
+        "mat_36": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 1.8 },
+
+        "mat_40": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 0.02 },
+        "mat_41": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 0.216 },
+        "mat_42": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 0.412 },
+        "mat_43": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 0.608 },
+        "mat_44": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 0.804 },
+        "mat_45": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.8, "ROUGHNESS": 1.0 },
+        "mat_46": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 2.0 },
+
+        "mat_50": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 0.02 },
+        "mat_51": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 0.216 },
+        "mat_52": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 0.412 },
+        "mat_53": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 0.608 },
+        "mat_54": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 0.804 },
+        "mat_55": { "TYPE": " Metallic", "RGB": [0.7, 0.5, 0.2], "METALLIC": 1.0, "ROUGHNESS": 1.0 },
+        "mat_56": { "TYPE": " Dielectric", "RGB": [1.0, 1.0, 1.0], "IOR": 2.2 }
+    },
+
+    "Camera":
+    {
+        "RES":[800, 800],
+        "FOVY":30.0,
+        "ITERATIONS":5000,
+        "DEPTH":8,
+        "FILE":"cornell",
+        "EYE":[1.5, 0.0, -15.0],
+        "LOOKAT":[0.0,0.0,10.0],
+        "UP":[0.0,1.0,0.0]
+    },
+
+    "Objects": 
+    [
+        { "TYPE": "sphere", "MATERIAL": "mat_00", "TRANS": [-7.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_01", "TRANS": [-4.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_02", "TRANS": [-1.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_03", "TRANS": [ 1.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_04", "TRANS": [ 4.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_05", "TRANS": [ 7.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_06", "TRANS": [10.5, -7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+
+        { "TYPE": "sphere", "MATERIAL": "mat_10", "TRANS": [-7.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_11", "TRANS": [-4.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_12", "TRANS": [-1.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_13", "TRANS": [ 1.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_14", "TRANS": [ 4.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_15", "TRANS": [ 7.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_16", "TRANS": [10.5, -4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+
+        { "TYPE": "sphere", "MATERIAL": "mat_20", "TRANS": [-7.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_21", "TRANS": [-4.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_22", "TRANS": [-1.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_23", "TRANS": [ 1.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_24", "TRANS": [ 4.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_25", "TRANS": [ 7.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_26", "TRANS": [10.5, -1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+
+        { "TYPE": "sphere", "MATERIAL": "mat_30", "TRANS": [-7.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_31", "TRANS": [-4.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_32", "TRANS": [-1.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_33", "TRANS": [ 1.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_34", "TRANS": [ 4.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_35", "TRANS": [ 7.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_36", "TRANS": [10.5, 1.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+
+        { "TYPE": "sphere", "MATERIAL": "mat_40", "TRANS": [-7.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_41", "TRANS": [-4.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_42", "TRANS": [-1.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_43", "TRANS": [ 1.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_44", "TRANS": [ 4.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_45", "TRANS": [ 7.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_46", "TRANS": [10.5, 4.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+
+        { "TYPE": "sphere", "MATERIAL": "mat_50", "TRANS": [-7.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_51", "TRANS": [-4.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_52", "TRANS": [-1.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_53", "TRANS": [ 1.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_54", "TRANS": [ 4.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_55", "TRANS": [ 7.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] },
+        { "TYPE": "sphere", "MATERIAL": "mat_56", "TRANS": [10.5, 7.5, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [2.5, 2.5, 2.5] }
+    ]
+}
