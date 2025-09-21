@@ -46,27 +46,37 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             newMaterial.type = MaterialType::DIFFUSE;
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
         } 
         else if (p["TYPE"] == "Emitting")
         {
             newMaterial.type = MaterialType::EMISSIVE;
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.emittance = p["EMITTANCE"];
         }
         else if (p["TYPE"] == "Specular")
         {
             newMaterial.type = MaterialType::SPECULAR; 
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
         }
         else if (p["TYPE"] == "Transmissive") 
         {
             newMaterial.type = MaterialType::TRANSMISSIVE; 
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.indexOfRefraction = p["IOR"];
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.ior = p["IOR"];
+        }
+        else if (p["TYPE"] == "PBR")
+        {
+            newMaterial.type = MaterialType::PBR; 
+            const auto& col = p["RGB"]; 
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.emittance = p["EMITTANCE"];
+            newMaterial.ior = p["IOR"];
+            newMaterial.metallic = p["METALLIC"];
+            newMaterial.roughness = p["ROUGHNESS"];
         }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);

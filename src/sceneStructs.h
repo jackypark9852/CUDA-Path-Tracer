@@ -21,18 +21,31 @@ enum class MaterialType
 struct Material
 {
     MaterialType type;
-    glm::vec3 color;
+    
+    glm::vec3 baseColor;
+    float ior;
+    float emittance;
+    float metallic;
+    float roughness;
+
+    // Transmission
+    float     transmission; // 0..1
+    float     thickness; // meters
+    glm::vec3 attenuationColor; // Beer–Lambert
+    float     attenuationDistance; // meters
+
+    // Texture indices (optional; -1 if none)
+    int baseColorTex;
+    int metallicRoughnessTex;
+    int normalTex;
+    int emissiveTex;
+
+    // For perfectly specular case
     struct
     {
         float exponent;
         glm::vec3 color;
-    } specular;
-    float hasReflective;
-    float hasRefractive;
-    float indexOfRefraction;
-    float emittance;
-
-    // BxDF Parameters
+    } specular; 
 };
 
 enum GeomType

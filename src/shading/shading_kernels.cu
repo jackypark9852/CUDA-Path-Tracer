@@ -34,7 +34,7 @@ __global__ void shadePbrMaterial(
     }
 
     Material material = materials[intersection.materialId];
-    glm::vec3 materialColor = material.color;
+    glm::vec3 materialColor = material.baseColor;
 
     // NOTE: remove this if we want to use pbr and non-pbr kernel together 
     //       otherwise this pbr kernel will just paint the non-pbr surfaces magenta
@@ -54,7 +54,7 @@ __global__ void shadePbrMaterial(
     glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
     float cosIn = glm::max(0.f, dot(n, wi));
     float pdf = cosIn / glm::pi<float>();
-    glm::vec3 f = material.color / glm::pi<float>();
+    glm::vec3 f = material.baseColor / glm::pi<float>();
     pathSegment->color *= f * (cosIn / pdf);
     glm::vec3 hitP = pathSegment->ray.origin +
         pathSegment->ray.direction * intersection.t;

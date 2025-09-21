@@ -36,7 +36,7 @@ DEVICE_INLINE void shadeEmissive_impl(
         return;
     }
     Material mat = m[isect.materialId];
-    seg->color *= mat.color * mat.emittance;
+    seg->color *= mat.baseColor * mat.emittance;
     seg->shouldTerminate = true;
 }
 
@@ -58,7 +58,7 @@ DEVICE_INLINE void shadeDiffuse_impl(
     Material mat = m[isect.materialId];
     glm::vec3 n = isect.surfaceNormal;
     glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
-    seg->color *= mat.color;
+    seg->color *= mat.baseColor;
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect.t;
     seg->ray.origin = hitP + n * EPSILON;
     seg->ray.direction = wi;
@@ -80,7 +80,7 @@ DEVICE_INLINE void shadeSpecular_impl(
         return;
     }
     Material mat = m[isect.materialId];
-    seg->color *= mat.color;
+    seg->color *= mat.baseColor;
     glm::vec3 n = isect.surfaceNormal;
     glm::vec3 wi = glm::reflect(seg->ray.direction, n);
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect.t;
@@ -105,7 +105,7 @@ DEVICE_INLINE void shadeTransmissive_impl(
     }
     Material mat = m[isect.materialId];
     const float etaA = 1.0f;
-    const float etaB = mat.indexOfRefraction;
+    const float etaB = mat.ior;
     glm::vec3 n = glm::normalize(isect.surfaceNormal);
     glm::vec3 I = glm::normalize(seg->ray.direction);
     glm::vec3 wo = -I;
