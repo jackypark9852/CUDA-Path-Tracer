@@ -14,7 +14,8 @@ enum class MaterialType
     DIFFUSE,
     SPECULAR,
     TRANSMISSIVE,
-    PBR, 
+    METALLIC, 
+    DIELECTRIC, 
     COUNT 
 };
 

@@ -128,6 +128,32 @@ DEVICE_INLINE void shadeTransmissive_impl(
     --seg->remainingBounces;
 }
 
+DEVICE_INLINE void shadeMetallic_impl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m)
+{
+    ShadeableIntersection isect = s[idx];
+    PathSegment* seg = p + idx;
+    const glm::vec3 metallicIdColor = glm::vec3(1.0, 0.0, 0.0);
+    seg->color = metallicIdColor;
+    seg->shouldTerminate = true;
+}
+
+DEVICE_INLINE void shadeDielectric_impl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m)
+{
+    ShadeableIntersection isect = s[idx];
+    PathSegment* seg = p + idx;
+    const glm::vec3 metallicIdColor = glm::vec3(0.0, 1.0, 0.0);
+    seg->color = metallicIdColor;
+    seg->shouldTerminate = true;
+}
+
 __global__ void kernShadeEmissive(
     int iter, int n, 
     ShadeableIntersection* s, 
@@ -152,7 +178,13 @@ __global__ void kernShadeTransmissive(
     PathSegment* p, 
     Material* m);
 
-__global__ void shadePbrMaterial(
+__global__ void kernShadeMetallic(
+    int iter, int num_paths,
+    ShadeableIntersection* shadeableIntersections,
+    PathSegment* pathSegments,
+    Material* materials);
+
+__global__ void kernShadeDielectric(
     int iter, int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,

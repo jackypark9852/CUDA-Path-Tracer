@@ -361,7 +361,11 @@ static void MaterialSortAndShade(
         case MaterialType::TRANSMISSIVE:
             kernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
-        case MaterialType::PBR:
+        case MaterialType::METALLIC:
+            kernShadeMetallic KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
+            break;
+        case MaterialType::DIELECTRIC: 
+            kernShadeDielectric KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         default:
             break;

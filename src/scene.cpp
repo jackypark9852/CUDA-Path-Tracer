@@ -68,9 +68,9 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.ior = p["IOR"];
         }
-        else if (p["TYPE"] == "PBR")
+        else if (p["TYPE"] == "METALLIC")
         {
-            newMaterial.type = MaterialType::PBR; 
+            newMaterial.type = MaterialType::METALLIC; 
             const auto& col = p["RGB"]; 
             newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.emittance = p["EMITTANCE"];
