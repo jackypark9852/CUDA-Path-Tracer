@@ -31,7 +31,7 @@ DEVICE_INLINE void shadeEmissive_impl(
     PathSegment* seg = p + idx;
     if (seg->shouldTerminate) return;
     if (isect.t <= 0.0f || seg->remainingBounces <= 0) {
-        seg->color = glm::vec3(0.0f);
+        seg->color = glm::vec3(0.0f);   
         seg->shouldTerminate = true;
         return;
     }

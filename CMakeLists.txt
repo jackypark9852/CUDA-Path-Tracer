@@ -56,6 +56,7 @@
         src/sceneStructs.h
         src/utilities.h
         src/settings.h
+        src/texture.h
         src/shading/shading_common.cuh
         src/shading/shading_bsdf.cuh
         src/shading/shading_kernels.cuh
@@ -72,6 +73,7 @@
         src/scene.cpp
         src/utilities.cpp
         src/settings.cpp
+        src/texture.cpp
         src/shading/shading_kernels.cu
     )
 
