@@ -7,12 +7,24 @@
 #include "json.hpp"
 
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include "texture.h"
 
 using namespace std;
 using json = nlohmann::json;
+namespace fs = std::filesystem;
+
+static fs::path resolvePathRelativeTo(const fs::path& baseFile, const std::string& p) {
+    fs::path candidate = fs::path(p);
+    if (!candidate.is_absolute()) {
+        candidate = baseFile.parent_path() / candidate; 
+    }
+    candidate = candidate.lexically_normal();
+    return candidate;
+}
 
 Scene::Scene(string filename)
 {
@@ -117,6 +129,29 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
         geoms.push_back(newGeom);
     }
+
+    // load environment map 
+    const auto& envMapData = data["EnvironmentMap"]; 
+    std::string envRel = envMapData["Path"].get<std::string>();
+
+    fs::path envPath = resolvePathRelativeTo(jsonName, envRel);
+    if (!fs::exists(envPath)) {
+        throw std::runtime_error("EnvironmentMap not found at: " + envPath.string());
+    }
+
+    cpt::TextureDesc hdrEnvDesc;
+    hdrEnvDesc.pixelFormat = cpt::PixelFormat::RGBA32F;
+    hdrEnvDesc.colorSpace = cpt::ColorSpace::Linear;
+    hdrEnvDesc.sampler.addressU = cudaAddressModeWrap;
+    hdrEnvDesc.sampler.addressV = cudaAddressModeClamp;
+    hdrEnvDesc.sampler.filter = cudaFilterModeLinear;
+    hdrEnvDesc.sampler.normalizedCoords = true;
+    hdrEnvDesc.sampler.readMode = cudaReadModeElementType;
+    cpt::Texture2D envMap;
+    cpt::createTextureFromFile(envMap, envPath, hdrEnvDesc); 
+    textures.push_back(envMap); 
+
+    // load camera settings
     const auto& cameraData = data["Camera"];
     Camera& camera = state.camera;
     RenderState& state = this->state;

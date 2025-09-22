@@ -1,82 +1,78 @@
 #pragma once
-#include <string>
-#include <vector>
 #include <filesystem>
+#include <vector>
 #include <cuda_runtime.h>
 
 namespace cpt {
-    class Texture2D {
-    public:
-        enum class PixelFormat { R8, RG8, RGBA8, R16F, RG16F, RGBA16F, R32F, RG32F, RGBA32F };
+    enum class PixelFormat { R8, RG8, RGBA8, R16F, RG16F, RGBA16F, R32F, RG32F, RGBA32F };
 
-        enum class ColorSpace { Linear, sRGB };
+    enum class ColorSpace { Linear, sRGB };
 
-        struct Sampler {
-            cudaTextureAddressMode addressU = cudaAddressModeClamp;
-            cudaTextureAddressMode addressV = cudaAddressModeClamp;
-            cudaTextureFilterMode  filter = cudaFilterModeLinear;
-            bool                   normalizedCoords = true;
-            cudaTextureReadMode    readMode = cudaReadModeElementType;
-        };
-
-        struct TextureDesc {
-            PixelFormat pixelFormat = PixelFormat::RGBA32F;
-            ColorSpace  colorSpace = ColorSpace::Linear;
-            Sampler     sampler = {};
-        };
-
-        struct TextureView {
-            cudaTextureObject_t handle = 0;
-            int width = 0, height = 0;
-            __host__ __device__ explicit operator bool() const { return handle != 0; }
-        };
-
-        Texture2D() = delete;
-        explicit Texture2D(const std::filesystem::path& filePath,
-            const TextureDesc& desc = {},
-            cudaStream_t stream = 0);
-
-        Texture2D(int width, int height,
-            const void* pixels, size_t rowPitchBytes,
-            const TextureDesc& desc = {},
-            cudaStream_t stream = 0);
-
-        // move-only
-        Texture2D(Texture2D&& other) noexcept { moveFrom(std::move(other)); }
-        Texture2D& operator=(Texture2D&& other) noexcept {
-            if (this != &other) { destroy(); moveFrom(std::move(other)); }
-            return *this;
-        }
-        Texture2D(const Texture2D&) = delete;
-        Texture2D& operator=(const Texture2D&) = delete;
-
-        ~Texture2D() { destroy(); }
-
-        // acessors
-        TextureView view() const { return { texObj_, width_, height_ }; }
-        int  width()  const { return width_; }
-        int  height() const { return height_; }
-        bool valid()  const { return texObj_ != 0; }
-
-    private:
-        int width_ = 0, height_ = 0;
-        cudaArray_t array_ = nullptr;
-        cudaTextureObject_t texObj_ = 0;
-        TextureDesc desc;
-
-        void destroy() noexcept;
-        void moveFrom(Texture2D&& other) noexcept;
-
-        // creation helpers
-        void createArray(PixelFormat fmt, int w, int h);
-        void createTextureObject(const Sampler& s, PixelFormat fmt, ColorSpace cs);
-        static cudaChannelFormatDesc channelDesc(PixelFormat fmt);
-        static size_t bytesPerPixel(PixelFormat fmt);
-
-        // file loading
-        static bool loadFile(const std::filesystem::path& p,
-            PixelFormat targetFormat, ColorSpace cs,
-            std::vector<unsigned char>& outBytes,
-            int& w, int& h, size_t& rowPitch);
+    // sampler state for cudaTextureObject
+    struct Sampler {
+        cudaTextureAddressMode addressU = cudaAddressModeClamp;
+        cudaTextureAddressMode addressV = cudaAddressModeClamp;
+        cudaTextureFilterMode  filter = cudaFilterModeLinear;
+        bool                   normalizedCoords = true;
+        cudaTextureReadMode    readMode = cudaReadModeElementType;
     };
+    
+    // describes what type of CUDA texture to create
+    struct TextureDesc {
+        PixelFormat pixelFormat = PixelFormat::RGBA32F;
+        ColorSpace  colorSpace = ColorSpace::Linear;
+        Sampler     sampler = {};
+    };
+
+
+    // device facing texture descriptor
+    struct Texture2D {
+        int width = 0;
+        int height = 0;
+
+        // backing storage for texture/surface (don't deref on device)
+        cudaArray_t array = nullptr;
+
+        // texture handle for device-side sampling
+        cudaTextureObject_t texObj = 0;
+
+        // metadata you may want to carry around
+        TextureDesc desc{};
+
+        __host__ __device__ explicit operator bool() const { return texObj != 0; }
+    };
+
+    // --- creation / teardown helpers (host-side) --------------------------------
+    bool createTextureFromFile(Texture2D& out,
+        const std::filesystem::path& filePath,
+        const TextureDesc& desc,
+        cudaStream_t stream = 0);
+
+    // create from already-prepared pixels with a given row pitch in bytes.
+    bool createTextureFromPixels(Texture2D& out,
+        int w, int h,
+        const void* pixels, size_t rowPitchBytes,
+        const TextureDesc& desc,
+        cudaStream_t stream = 0);
+
+    // clean-up CUDA resources
+    void destroyTexture(Texture2D& t);
+
+    // --- loader & format utilities ----------------------------------------------
+    bool loadFile(const std::filesystem::path& path,
+        PixelFormat targetFormat,
+        ColorSpace  srcColorSpace,
+        std::vector<unsigned char>& outBytes,
+        int& w, int& h, size_t& rowPitch);
+
+    // CUDA channel descriptor and element size for a PixelFormat.
+    cudaChannelFormatDesc channelDesc(PixelFormat fmt);
+    size_t                bytesPerPixel(PixelFormat fmt);
+
+    // more helpers
+    bool  isFloat16(PixelFormat f);
+    bool  isFloat32(PixelFormat f);
+    int   dstChannels(PixelFormat f);
+    float srgbToLinear(float cs);
+
 }

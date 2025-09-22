@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <iostream>
 
+#define ERRORCHECK 1;
+
 float utilityCore::clamp(float f, float min, float max)
 {
     if (f < min)
@@ -138,4 +140,27 @@ std::istream& utilityCore::safeGetline(std::istream& is, std::string& t)
                 t += (char)c;
         }
     }
+}
+
+void utilityCore::checkCUDAErrorFn(const char* msg, const char* file, int line)
+{
+#if ERRORCHECK
+    cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (cudaSuccess == err)
+    {
+        return;
+    }
+
+    fprintf(stderr, "CUDA error");
+    if (file)
+    {
+        fprintf(stderr, " (%s:%d)", file, line);
+    }
+    fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+#ifdef _WIN32
+    getchar();
+#endif // _WIN32
+    exit(EXIT_FAILURE);
+#endif // ERRORCHECK
 }

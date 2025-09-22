@@ -12,34 +12,10 @@
 #include "settings.h"
 #include "shading/shading_common.cuh" 
 #include "shading/shading_kernels.cuh"
+#include "texture.h"
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/partition.h>
-
-#define ERRORCHECK 1
-
-void checkCUDAErrorFn(const char* msg, const char* file, int line)
-{
-#if ERRORCHECK
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (cudaSuccess == err)
-    {
-        return;
-    }
-
-    fprintf(stderr, "CUDA error");
-    if (file)
-    {
-        fprintf(stderr, " (%s:%d)", file, line);
-    }
-    fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
-#ifdef _WIN32
-    getchar();
-#endif // _WIN32
-    exit(EXIT_FAILURE);
-#endif // ERRORCHECK
-}
 
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm::vec3* image)
@@ -70,6 +46,8 @@ static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
+static cpt::Texture2D* dev_textures = NULL; 
+static cpt::Texture2D* dev_envTexture = NULL; 
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 static int* dev_startIdx = NULL; 
@@ -116,8 +94,6 @@ void pathtraceInit(Scene* scene)
 
     hst_startIdx = new int[static_cast<int>(MaterialType::COUNT)];
     hst_endIdx = new int[static_cast<int>(MaterialType::COUNT)];
-
-    checkCUDAError("pathtraceInit");
 }
 
 void pathtraceFree()
@@ -133,8 +109,6 @@ void pathtraceFree()
 
     delete[] hst_startIdx; 
     delete[] hst_endIdx; 
-
-    checkCUDAError("pathtraceFree");
 }
 
 /**

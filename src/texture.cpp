@@ -1,24 +1,27 @@
 #include "texture.h"
-
-#include <stdexcept>
-#include <vector>
+#include "utilities.h"
+#include <stb_image.h>     // no IMPLEMENTATION macro here; make sure you compile it once in your project
+#include <cmath>
 #include <cstring>
-#include <stb_image.h>
+#include <stdexcept>
 
 namespace cpt {
+    static bool   createArray(Texture2D& t, PixelFormat fmt, int w, int h);
+    static bool   createTextureObject(Texture2D& t, const Sampler& s);
+    static void   clear(Texture2D& t);
 
-    static inline bool isFloat16(cpt::Texture2D::PixelFormat f) {
-        using PF = cpt::Texture2D::PixelFormat;
+    bool isFloat16(PixelFormat f) {
+        using PF = PixelFormat;
         return f == PF::R16F || f == PF::RG16F || f == PF::RGBA16F;
     }
 
-    static inline bool isFloat32(cpt::Texture2D::PixelFormat f) {
-        using PF = cpt::Texture2D::PixelFormat;
+    bool isFloat32(PixelFormat f) {
+        using PF = PixelFormat;
         return f == PF::R32F || f == PF::RG32F || f == PF::RGBA32F;
     }
 
-    static inline int dstChannels(cpt::Texture2D::PixelFormat f) {
-        using PF = cpt::Texture2D::PixelFormat;
+    int dstChannels(PixelFormat f) {
+        using PF = PixelFormat;
         switch (f) {
         case PF::R8: case PF::R16F: case PF::R32F: return 1;
         case PF::RG8: case PF::RG16F: case PF::RG32F: return 2;
@@ -27,83 +30,11 @@ namespace cpt {
         }
     }
 
-    static inline float srgbToLinear(float cs) {
-        return (cs <= 0.04045f) ? (cs / 12.92f) : powf((cs + 0.055f) / 1.055f, 2.4f);
+    float srgbToLinear(float cs) {
+        return (cs <= 0.04045f) ? (cs / 12.92f) : std::pow((cs + 0.055f) / 1.055f, 2.4f);
     }
 
-    Texture2D::Texture2D(const std::filesystem::path& filePath,
-        const TextureDesc& d,
-        cudaStream_t stream)
-        : desc(d) {
-        std::vector<unsigned char> bytes;
-        int w = 0, h = 0;
-        size_t rowPitch = 0;
-        if (!loadFile(filePath, desc.pixelFormat, desc.colorSpace, bytes, w, h, rowPitch)) {
-            throw std::runtime_error("Texture2D: failed to load file: " + filePath.string());
-        }
-        width_ = w;
-        height_ = h;
-        createArray(desc.pixelFormat, w, h);
-        const size_t rowBytes = static_cast<size_t>(w) * bytesPerPixel(desc.pixelFormat);
-        cudaMemcpy2DToArrayAsync(array_, 0, 0,
-            bytes.data(), rowPitch,
-            rowBytes, h,
-            cudaMemcpyHostToDevice, stream);
-        createTextureObject(desc.sampler, desc.pixelFormat, desc.colorSpace);
-    }
-
-    Texture2D::Texture2D(int w, int h,
-        const void* pixels, size_t rowPitchBytes,
-        const TextureDesc& d,
-        cudaStream_t stream)
-        : desc(d) {
-        width_ = w;
-        height_ = h;
-        createArray(desc.pixelFormat, w, h);
-        const size_t rowBytes = static_cast<size_t>(w) * bytesPerPixel(desc.pixelFormat);
-        cudaMemcpy2DToArrayAsync(array_, 0, 0,
-            pixels, rowPitchBytes,
-            rowBytes, h,
-            cudaMemcpyHostToDevice, stream);
-        createTextureObject(desc.sampler, desc.pixelFormat, desc.colorSpace);
-    }
-
-    void Texture2D::destroy() noexcept {
-        if (texObj_) { cudaDestroyTextureObject(texObj_); texObj_ = 0; }
-        if (array_) { cudaFreeArray(array_); array_ = nullptr; }
-        width_ = 0; height_ = 0;
-    }
-
-    void Texture2D::moveFrom(Texture2D&& other) noexcept {
-        width_ = other.width_;
-        height_ = other.height_;
-        array_ = other.array_;   other.array_ = nullptr;
-        texObj_ = other.texObj_;  other.texObj_ = 0;
-        desc = other.desc;
-    }
-
-    void Texture2D::createArray(PixelFormat fmt, int w, int h) {
-        auto ch = channelDesc(fmt);
-        cudaMallocArray(&array_, &ch, w, h, cudaArrayDefault);
-    }
-
-    void Texture2D::createTextureObject(const Sampler& s, PixelFormat, ColorSpace) {
-        cudaResourceDesc res{};
-        res.resType = cudaResourceTypeArray;
-        res.res.array.array = array_;
-
-        cudaTextureDesc tex{};
-        tex.addressMode[0] = s.addressU;
-        tex.addressMode[1] = s.addressV;
-        tex.addressMode[2] = s.addressV;
-        tex.filterMode = s.filter;
-        tex.normalizedCoords = s.normalizedCoords ? 1 : 0;
-        tex.readMode = s.readMode;
-
-        cudaCreateTextureObject(&texObj_, &res, &tex, nullptr);
-    }
-
-    cudaChannelFormatDesc Texture2D::channelDesc(PixelFormat fmt) {
+    cudaChannelFormatDesc channelDesc(PixelFormat fmt) {
         switch (fmt) {
         case PixelFormat::R8:      return cudaCreateChannelDesc(8, 0, 0, 0, cudaChannelFormatKindUnsigned);
         case PixelFormat::RG8:     return cudaCreateChannelDesc(8, 8, 0, 0, cudaChannelFormatKindUnsigned);
@@ -118,7 +49,7 @@ namespace cpt {
         }
     }
 
-    size_t Texture2D::bytesPerPixel(PixelFormat fmt) {
+    size_t bytesPerPixel(PixelFormat fmt) {
         switch (fmt) {
         case PixelFormat::R8:      return 1;
         case PixelFormat::RG8:     return 2;
@@ -133,13 +64,11 @@ namespace cpt {
         }
     }
 
-    bool Texture2D::loadFile(const std::filesystem::path& path,
+    bool loadFile(const std::filesystem::path& path,
         PixelFormat targetFormat,
-        ColorSpace cs,
+        ColorSpace  srcColorSpace,
         std::vector<unsigned char>& outBytes,
-        int& w,
-        int& h,
-        size_t& rowPitch)
+        int& w, int& h, size_t& rowPitch)
     {
         // 16F target not handled (stb loads 16-bit as U16, not half-float)
         if (isFloat16(targetFormat)) {
@@ -149,7 +78,7 @@ namespace cpt {
         const int dstC = dstChannels(targetFormat);
         if (dstC == 0) return false;
 
-        // repack source components into CUDA friendly format 
+        // repack source components into CUDA friendly format
         int srcC = 0;
         int x = 0, y = 0;
 
@@ -171,10 +100,9 @@ namespace cpt {
 
                     // pack into greyscale
                     if (dstC == 1) {
-                        float g = (srcC >= 3) ? (0.2126f * s[0] + 0.7152f * s[1] + 0.0722f * s[2])
-                            : s[0];
+                        float g = (srcC >= 3) ? (0.2126f * s[0] + 0.7152f * s[1] + 0.0722f * s[2]) : s[0];
                         // sRGB -> linear if requested
-                        d[0] = (cs == ColorSpace::sRGB) ? srgbToLinear(g) : g;
+                        d[0] = (srcColorSpace == ColorSpace::sRGB) ? srgbToLinear(g) : g;
                     }
                     // pack into 2 channels
                     else if (dstC == 2) {
@@ -189,7 +117,7 @@ namespace cpt {
                         float b = (srcC >= 3) ? s[2] : r;
                         float a = (srcC >= 4) ? s[3] : 1.0f;
 
-                        if (cs == ColorSpace::sRGB) {
+                        if (srcColorSpace == ColorSpace::sRGB) {
                             r = srgbToLinear(r);
                             g = srgbToLinear(g);
                             b = srgbToLinear(b);
@@ -230,11 +158,11 @@ namespace cpt {
                         if (srcC >= 3) {
                             float r = s[0] / 255.f, g = s[1] / 255.f, b = s[2] / 255.f;
                             float gray = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-                            d[0] = (cs == ColorSpace::sRGB) ? toByte(srgbToLinear(gray)) : toByte(gray);
+                            d[0] = (srcColorSpace == ColorSpace::sRGB) ? toByte(srgbToLinear(gray)) : toByte(gray);
                         }
                         else {
                             float v = s[0] / 255.f;
-                            d[0] = (cs == ColorSpace::sRGB) ? toByte(srgbToLinear(v)) : s[0];
+                            d[0] = (srcColorSpace == ColorSpace::sRGB) ? toByte(srgbToLinear(v)) : s[0];
                         }
                     }
                     else if (dstC == 2) {
@@ -243,7 +171,7 @@ namespace cpt {
                         else /* srcC==1 */ { d[0] = s[0]; d[1] = s[0]; }
                     }
                     else { // dstC == 4
-                        if (cs == ColorSpace::sRGB) {
+                        if (srcColorSpace == ColorSpace::sRGB) {
                             // convert RGB from sRGB->linear, alpha untouched
                             float r = (srcC >= 1 ? s[0] : 0) / 255.f;
                             float g = (srcC >= 2 ? s[1] : s[0]) / 255.f;
@@ -271,4 +199,125 @@ namespace cpt {
             return true;
         }
     }
+
+    bool createTextureFromFile(Texture2D& out,
+        const std::filesystem::path& filePath,
+        const TextureDesc& d,
+        cudaStream_t stream)
+    {
+        std::vector<unsigned char> bytes;
+        int w = 0, h = 0;
+        size_t rowPitch = 0;
+
+        if (!loadFile(filePath, d.pixelFormat, d.colorSpace, bytes, w, h, rowPitch)) {
+            return false;
+        }
+
+        out.desc = d;
+        out.width = w;
+        out.height = h;
+
+        if (!createArray(out, d.pixelFormat, w, h)) {
+            clear(out);
+            return false;
+        }
+
+        const size_t rowBytes = static_cast<size_t>(w) * bytesPerPixel(d.pixelFormat);
+        if (cudaMemcpy2DToArrayAsync(out.array, 0, 0,
+            bytes.data(), rowPitch,
+            rowBytes, h,
+            cudaMemcpyHostToDevice, stream) != cudaSuccess) {
+            clear(out);
+            checkCUDAError("cudaMemcpy2DToArrayAsync");
+            return false;
+        }
+
+        if (!createTextureObject(out, d.sampler)) {
+            clear(out);
+            checkCUDAError("createTextureObject");
+            return false;
+        }
+
+        return true;
+    }
+
+    bool createTextureFromPixels(Texture2D& out,
+        int w, int h,
+        const void* pixels, size_t rowPitchBytes,
+        const TextureDesc& d,
+        cudaStream_t stream)
+    {
+        Texture2D tmp{};
+        tmp.desc = d;
+        tmp.width = w;
+        tmp.height = h;
+
+        if (!createArray(tmp, d.pixelFormat, w, h)) {
+            clear(tmp);
+            return false;
+        }
+
+        const size_t rowBytes = static_cast<size_t>(w) * bytesPerPixel(d.pixelFormat);
+        if (cudaMemcpy2DToArrayAsync(tmp.array, 0, 0,
+            pixels, rowPitchBytes,
+            rowBytes, h,
+            cudaMemcpyHostToDevice, stream) != cudaSuccess) {
+            clear(tmp);
+            return false;
+        }
+
+        if (!createTextureObject(tmp, d.sampler)) {
+            clear(tmp);
+            return false;
+        }
+
+        destroyTexture(out);
+        out = tmp;
+        return true;
+    }
+
+    void destroyTexture(Texture2D& t) {
+        if (t.texObj) {
+            cudaDestroyTextureObject(t.texObj);
+            checkCUDAError("cudaDestroyTextureObject");
+            t.texObj = 0;
+        }
+        if (t.array) {
+            cudaFreeArray(t.array);
+            checkCUDAError("cudaFreeArray");
+            t.array = nullptr;
+        }
+        t.width = t.height = 0;
+        t.desc = {};
+    }
+
+    static bool createArray(Texture2D& t, PixelFormat fmt, int w, int h) {
+        auto ch = channelDesc(fmt);
+        bool ret = cudaMallocArray(&t.array, &ch, w, h, cudaArrayDefault) == cudaSuccess; 
+        checkCUDAError("cudaMallocArray"); 
+        return ret;
+    }
+
+    static bool createTextureObject(Texture2D& t, const Sampler& s) {
+        cudaResourceDesc res{};
+        res.resType = cudaResourceTypeArray;
+        res.res.array.array = t.array;
+
+        cudaTextureDesc tex{};
+        tex.addressMode[0] = s.addressU;
+        tex.addressMode[1] = s.addressV;
+        tex.addressMode[2] = s.addressV; // unused for 2D
+        tex.filterMode = s.filter;
+        tex.normalizedCoords = s.normalizedCoords ? 1 : 0;
+        tex.readMode = s.readMode;
+
+        return cudaCreateTextureObject(&t.texObj, &res, &tex, nullptr) == cudaSuccess;
+    }
+
+    static void clear(Texture2D& t) {
+        // helper to release partially-initialized resources
+        if (t.texObj) {t.texObj = 0; }
+        if (t.array) {t.array = nullptr; }
+    }
+
 }

@@ -173,8 +173,6 @@ void cleanupCuda()
 void initCuda()
 {
     cudaGLSetGLDevice(0);
-
-    // Clean up on program exit
     atexit(cleanupCuda);
 }
 
@@ -240,7 +238,7 @@ bool init()
     // Initialize other stuff
     initVAO();
     initTextures();
-    initCuda();
+    //initCuda();
     initPBO();
     GLuint passthroughProgram = initShader();
 
@@ -385,7 +383,7 @@ int main(int argc, char** argv)
 
     // Initialize CUDA and GL components
     init();
-
+    
     // Initialize ImGui Data
     InitImguiData(guiData);
     InitDataContainer(guiData);

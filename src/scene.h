@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sceneStructs.h"
+#include "texture.h"
 #include <vector>
 
 class Scene
@@ -12,5 +13,6 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
+    std::vector<cpt::Texture2D> textures; 
     RenderState state;
 };
