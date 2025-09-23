@@ -36,10 +36,16 @@ __global__ void kernShadePbr(int iter, int n, ShadeableIntersection* s, PathSegm
     if (idx < n) shadePbr_impl(iter, idx, s, p, m);
 }
 
-__global__ void kernrShadeEnvMap(int iter, int n, ShadeableIntersection* s, PathSegment* p, const cpt::Texture2D envMap)
+__global__ void kernShadeEnvMap(int iter, int n, ShadeableIntersection* s, PathSegment* p, const cpt::Texture2D envMap)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < n) shadeEnvMap_impl(iter, idx, s, p, envMap);
+}
+
+__global__ void kernShadeError(int iter, int n, ShadeableIntersection* s, PathSegment* p)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) shadeError_impl(iter, idx, s, p);
 }
 
 __global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D envMap) {
@@ -69,7 +75,7 @@ __global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s,
         case MaterialType::DIFFUSE:       shadeDiffuse_impl(iter, idx, s, p, m);       break;
         case MaterialType::SPECULAR:      shadeSpecular_impl(iter, idx, s, p, m);      break;
         case MaterialType::TRANSMISSIVE:  shadeTransmissive_impl(iter, idx, s, p, m);  break;
-        case MaterialType::PBR:           shadePbr_impl(iter, idx, s, p, m);      break; 
-        default: seg->shouldTerminate = true; break;
+        case MaterialType::PBR:           shadePbr_impl(iter, idx, s, p, m);           break; 
+        default:                          shadeError_impl(iter, idx, s, p);            break;
     }
 }

@@ -6,6 +6,7 @@
 #include "../texture.h"
 
 #include "glm/gtx/norm.hpp"
+#include "shading_bsdf.cuh"
 #include "shading_common.cuh"
 #include "shading_kernels.cuh"
 #include <cuda_runtime.h>
@@ -140,20 +141,40 @@ DEVICE_INLINE void shadePbr_impl(
     ShadeableIntersection isect = s[idx];
     Material* mat = m + isect.materialId;
     PathSegment* seg = p + idx;
+    BSDFSample sample{}; sample.pdf = 0.f;
+    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, seg->remainingBounces);
 
-    //thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, seg->remainingBounces);
-    float wDiffuse = (1.0f - mat->metallic) * (1.0f - mat->transmission);
-    float wReflection = 1.0f; 
-    float wTransmissive = (mat->transmission > EPSILON)? 1.0f : 0.0f;
-    
-    // probabilities used for choosing the type of sample 
-    float sum = wDiffuse + wReflection + wTransmissive; 
-    float pDiffuse = wDiffuse / sum; 
-    float pReflection = wReflection / sum; 
-    float pTransmissive = wTransmissive / sum; 
+    float alpha = fmaxf(1e-4f, mat->roughness * mat->roughness);
 
-    p->color = glm::vec3(pDiffuse);
-    p->shouldTerminate = true;
+    glm::vec3 F0_dielectric(0.04f);
+    glm::vec3 F0 = (1.f - mat->metallic) * F0_dielectric + mat->metallic * mat->baseColor;
+
+    glm::vec3 n = isect.surfaceNormal;
+    glm::vec3 v = -seg->ray.direction;
+
+    float NdotV = fmaxf(glm::dot(n, v), 0.f);
+    glm::vec3 F_view = fresnelSchlick(F0, NdotV);
+    float F_avg = (F_view.x + F_view.y + F_view.z) * (1.f / 3.f);
+
+    // unnormalized lobe weights
+    float wDiffuse = (1.f - mat->metallic) * (1.f - mat->transmission) * (1.f - F_avg);
+    float wRefl = F_avg;
+    float wTrans = (1.f - F_avg) * mat->transmission;
+
+    // calculate probabilities from weights
+    float wSum = wDiffuse + wRefl + wTrans + 1e-7f;
+    float pDiffuse = wDiffuse / wSum;
+    float pRefl = wRefl / wSum;
+    float pTrans = wTrans / wSum;
+
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    float xi = u01(rng); 
+    if (xi < pDiffuse) {
+        // do some diffuse sampling here
+    }
+
+    seg->color = glm::vec3(pDiffuse);
+    seg->shouldTerminate = true;
 }
 
 // https://en.wikipedia.org/wiki/File:Equirectangular_projection_SW.jpg
@@ -180,6 +201,21 @@ DEVICE_INLINE void shadeEnvMap_impl(
     seg->color *= glm::vec3(texel.x, texel.y, texel.z); 
     seg->shouldTerminate = true; 
 }
+
+
+DEVICE_INLINE void shadeError_impl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p
+)
+{
+    PathSegment* seg = p + idx;
+
+    glm::vec3 errorColor = glm::vec3(1.0f, 0.0f, 1.0f); // magenta
+    seg->color = errorColor; 
+    seg->shouldTerminate = true;
+}
+
 
 __global__ void kernShadeEmissive(
     int iter, int n, 
@@ -211,11 +247,16 @@ __global__ void kernShadePbr(
     PathSegment* p,
     Material* m);
 
-__global__ void kernrShadeEnvMap(
+__global__ void kernShadeEnvMap(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p,
     const cpt::Texture2D envMap);
+
+__global__ void kernShadeError(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p);
 
 __global__ void kernShadeAllMaterials(
     int iter, int num_paths,

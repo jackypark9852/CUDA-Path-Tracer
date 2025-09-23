@@ -339,8 +339,10 @@ static void MaterialSortAndShade(
             kernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
             break;
         case MaterialType::ENVMAP:
-            kernrShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
+            kernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
+            break; 
         default:
+            kernShadeError KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice); 
             break;
         }
     }

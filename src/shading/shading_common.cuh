@@ -29,21 +29,21 @@ __forceinline__ __device__ glm::vec3 SphericalDirection(float st, float ct, floa
     return glm::vec3(st * cosf(phi), st * sinf(phi), ct);
 }
 
-struct Frame {
-    glm::vec3 x, y, z;
-    __host__ __device__ Frame() {};
-    __host__ __device__ Frame(const glm::vec3& x_, const glm::vec3& y_, const glm::vec3& z_)
-        : x(x_), y(y_), z(z_) {
-    }
-    __host__ __device__ static Frame FromZ(const glm::vec3& z) {
-        float sign = copysignf(1.f, z.z);
-        float a = -1.f / (sign + z.z);
-        float b = z.x * z.y * a;
-        glm::vec3 x(1.f + sign * z.x * z.x * a, sign * b, -sign * z.x);
-        glm::vec3 y(b, sign + z.y * z.y * a, -z.y);
-        // optional renorm
-        return Frame(glm::normalize(x), glm::normalize(y), z);
-    }
-    __host__ __device__ glm::vec3 ToLocal(const glm::vec3& v) const { return { glm::dot(v,x), glm::dot(v,y), glm::dot(v,z) }; }
-    __host__ __device__ glm::vec3 FromLocal(const glm::vec3& v) const { return v.x * x + v.y * y + v.z * z; }
-};
+__forceinline__ __device__ void branchlessONB(const glm::vec3& n, glm::vec3& b1, glm::vec3& b2)
+{
+    float sign = copysignf(1.0f, n.z);
+    const float a = -1.0f / (sign + n.z);
+    const float b = n.x * n.y * a;
+    b1 = glm::vec3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
+    b2 = glm::vec3(b, sign + n.y * n.y * a, -n.y);
+}
+
+__device__ __forceinline__ void worldToLocal(const glm::vec3& n, const glm::vec3& w, glm::vec3& wl) {
+    glm::vec3 t, b; branchlessONB(n, t, b);
+    wl = glm::vec3(glm::dot(w, t), glm::dot(w, b), glm::dot(w, n));
+}
+
+__device__ __forceinline__ glm::vec3 localToWorld(const glm::vec3& n, const glm::vec3& wl) {
+    glm::vec3 t, b; branchlessONB(n, t, b);
+    return wl.x * t + wl.y * b + wl.z * n;
+}

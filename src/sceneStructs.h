@@ -109,3 +109,10 @@ struct ShadeableIntersection
   MaterialType materialType; 
   int materialId;
 };
+
+struct BSDFSample {
+    glm::vec3 incomingDir;
+    glm::vec3 bsdfValue;   // f(wo, wi)
+    float     pdf;
+    bool      isDelta;
+};
