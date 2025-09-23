@@ -202,7 +202,7 @@ __global__ void computeIntersections(
 
         if (hit_geom_index == -1)
         {
-            intersections[path_index].t = 1.0f; // just some value so that material sorting does 
+            intersections[path_index].t = -1.0f; // just some value so that material sorting does 
             intersections[path_index].materialType = MaterialType::ENVMAP; 
         }
         else
@@ -335,11 +335,8 @@ static void MaterialSortAndShade(
         case MaterialType::TRANSMISSIVE:
             kernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
-        case MaterialType::METALLIC:
-            kernShadeMetallic KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
-            break;
-        case MaterialType::DIELECTRIC: 
-            kernShadeDielectric KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+        case MaterialType::PBR:
+            kernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
             break;
         case MaterialType::ENVMAP:
             kernrShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 

@@ -14,8 +14,7 @@ enum class MaterialType
     DIFFUSE,
     SPECULAR,
     TRANSMISSIVE,
-    METALLIC, 
-    DIELECTRIC, 
+    PBR,
     ENVMAP,
     COUNT 
 };
@@ -29,12 +28,7 @@ struct Material
     float emittance;
     float metallic;
     float roughness;
-
-    // Transmission
-    float     transmission; // 0..1
-    float     thickness; // meters
-    glm::vec3 attenuationColor; // Beer–Lambert
-    float     attenuationDistance; // meters
+    float transmission; 
 
     // Texture indices (optional; -1 if none)
     int baseColorTex;

@@ -131,7 +131,7 @@ DEVICE_INLINE void shadeTransmissive_impl(
     --seg->remainingBounces;
 }
 
-DEVICE_INLINE void shadeMetallic_impl(
+DEVICE_INLINE void shadePbr_impl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
@@ -143,20 +143,6 @@ DEVICE_INLINE void shadeMetallic_impl(
     seg->color = metallicIdColor;
     seg->shouldTerminate = true;
 }
-
-DEVICE_INLINE void shadeDielectric_impl(
-    int iter, int idx,
-    ShadeableIntersection* s,
-    PathSegment* p,
-    Material* m)
-{
-    ShadeableIntersection isect = s[idx];
-    PathSegment* seg = p + idx;
-    const glm::vec3 dielectricColor = glm::vec3(0.0, 1.0, 0.0);
-    seg->color = dielectricColor;
-    seg->shouldTerminate = true;
-}
-
 
 // https://en.wikipedia.org/wiki/File:Equirectangular_projection_SW.jpg
 DEVICE_INLINE glm::vec2 sphere2mapUV_Equirectangular(glm::vec3 p)
@@ -207,13 +193,7 @@ __global__ void kernShadeTransmissive(
     PathSegment* p, 
     Material* m);
 
-__global__ void kernShadeMetallic(
-    int iter, int n,
-    ShadeableIntersection* s,
-    PathSegment* p,
-    Material* m);
-
-__global__ void kernShadeDielectric(
+__global__ void kernShadePbr(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p,
