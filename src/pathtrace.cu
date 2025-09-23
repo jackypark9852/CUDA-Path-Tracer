@@ -47,7 +47,7 @@ static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static cpt::Texture2D* dev_textures = NULL; 
-static cpt::Texture2D* dev_envTexture = NULL; 
+static cpt::Texture2D* envMap = NULL; 
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 static int* dev_startIdx = NULL; 
@@ -94,6 +94,8 @@ void pathtraceInit(Scene* scene)
 
     hst_startIdx = new int[static_cast<int>(MaterialType::COUNT)];
     hst_endIdx = new int[static_cast<int>(MaterialType::COUNT)];
+
+    envMap = &(scene->envMap); 
 }
 
 void pathtraceFree()
@@ -200,10 +202,8 @@ __global__ void computeIntersections(
 
         if (hit_geom_index == -1)
         {
-            intersections[path_index].t = -1.0f;
-            intersections[path_index].materialType = MaterialType::INVALID; 
-            pathSegment.color = glm::vec3(0.f, 0.f, 0.f); 
-            pathSegment.shouldTerminate = true;
+            intersections[path_index].t = 1.0f; // just some value so that material sorting does 
+            intersections[path_index].materialType = MaterialType::ENVMAP; 
         }
         else
         {
@@ -341,6 +341,8 @@ static void MaterialSortAndShade(
         case MaterialType::DIELECTRIC: 
             kernShadeDielectric KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
+        case MaterialType::ENVMAP:
+            kernrShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
         default:
             break;
         }
@@ -410,7 +412,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
                 numPaths,
                 dev_intersections,
                 dev_paths,
-                dev_materials
+                dev_materials, 
+                *envMap
                 );
         }
         

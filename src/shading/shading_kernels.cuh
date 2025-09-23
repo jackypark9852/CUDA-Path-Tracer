@@ -3,10 +3,13 @@
 #include "../intersections.h"
 #include "../interactions.h"
 #include "../utilities.h"
+#include "../texture.h"
 
 #include "glm/gtx/norm.hpp"
 #include "shading_common.cuh"
 #include "shading_kernels.cuh"
+#include <cuda_runtime.h>
+
 
 #include <thrust/random.h>
 
@@ -149,9 +152,35 @@ DEVICE_INLINE void shadeDielectric_impl(
 {
     ShadeableIntersection isect = s[idx];
     PathSegment* seg = p + idx;
-    const glm::vec3 metallicIdColor = glm::vec3(0.0, 1.0, 0.0);
-    seg->color = metallicIdColor;
+    const glm::vec3 dielectricColor = glm::vec3(0.0, 1.0, 0.0);
+    seg->color = dielectricColor;
     seg->shouldTerminate = true;
+}
+
+
+// https://en.wikipedia.org/wiki/File:Equirectangular_projection_SW.jpg
+DEVICE_INLINE glm::vec2 sphere2mapUV_Equirectangular(glm::vec3 p)
+{
+    return glm::vec2(
+        atan2(p.x, -p.z) / (2 * PI) + .5,
+        -p.y * .5 + .5
+    );
+}
+
+
+DEVICE_INLINE void shadeEnvMap_impl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    const cpt::Texture2D envMap
+) 
+{
+    PathSegment* seg = p + idx; 
+    glm::vec2 uv = sphere2mapUV_Equirectangular(normalize(seg->ray.direction));
+    float4 texel = tex2D<float4>(envMap.texObj, uv.x, uv.y);
+    
+    seg->color *= glm::vec3(texel.x, texel.y, texel.z); 
+    seg->shouldTerminate = true; 
 }
 
 __global__ void kernShadeEmissive(
@@ -179,19 +208,26 @@ __global__ void kernShadeTransmissive(
     Material* m);
 
 __global__ void kernShadeMetallic(
-    int iter, int num_paths,
-    ShadeableIntersection* shadeableIntersections,
-    PathSegment* pathSegments,
-    Material* materials);
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
 
 __global__ void kernShadeDielectric(
-    int iter, int num_paths,
-    ShadeableIntersection* shadeableIntersections,
-    PathSegment* pathSegments,
-    Material* materials);
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
+
+__global__ void kernrShadeEnvMap(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    const cpt::Texture2D envMap);
 
 __global__ void kernShadeAllMaterials(
     int iter, int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
-    Material* materials);
+    Material* materials,
+    const cpt::Texture2D envMap);

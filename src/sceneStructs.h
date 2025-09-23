@@ -16,6 +16,7 @@ enum class MaterialType
     TRANSMISSIVE,
     METALLIC, 
     DIELECTRIC, 
+    ENVMAP,
     COUNT 
 };
 

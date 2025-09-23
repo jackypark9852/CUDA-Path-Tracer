@@ -41,7 +41,13 @@ __global__ void kernShadeDielectric(int iter, int n, ShadeableIntersection* s, P
     if (idx < n) shadeDielectric_impl(iter, idx, s, p, m);
 }
 
-__global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void kernrShadeEnvMap(int iter, int n, ShadeableIntersection* s, PathSegment* p, const cpt::Texture2D envMap)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) shadeEnvMap_impl(iter, idx, s, p, envMap);
+}
+
+__global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D envMap) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
 
@@ -63,6 +69,7 @@ __global__ void kernShadeAllMaterials(int iter, int n, ShadeableIntersection* s,
         case MaterialType::TRANSMISSIVE:  shadeTransmissive_impl(iter, idx, s, p, m);  break;
         case MaterialType::METALLIC:      shadeMetallic_impl(iter, idx, s, p, m);      break; 
         case MaterialType::DIELECTRIC:    shadeDielectric_impl(iter, idx, s, p, m);    break; 
+        case MaterialType::ENVMAP:        shadeEnvMap_impl(iter, idx, s, p, envMap);   break; 
         default: seg->shouldTerminate = true; break;
     }
 }

@@ -13,6 +13,7 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
-    std::vector<cpt::Texture2D> textures; 
+    std::vector<cpt::Texture2D> textures; // excluding environemnt map
+    cpt::Texture2D envMap; 
     RenderState state;
 };

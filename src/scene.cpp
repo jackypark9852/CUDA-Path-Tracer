@@ -147,9 +147,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     hdrEnvDesc.sampler.filter = cudaFilterModeLinear;
     hdrEnvDesc.sampler.normalizedCoords = true;
     hdrEnvDesc.sampler.readMode = cudaReadModeElementType;
-    cpt::Texture2D envMap;
     cpt::createTextureFromFile(envMap, envPath, hdrEnvDesc); 
-    textures.push_back(envMap); 
 
     // load camera settings
     const auto& cameraData = data["Camera"];
