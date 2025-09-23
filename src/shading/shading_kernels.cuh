@@ -138,10 +138,22 @@ DEVICE_INLINE void shadePbr_impl(
     Material* m)
 {
     ShadeableIntersection isect = s[idx];
+    Material* mat = m + isect.materialId;
     PathSegment* seg = p + idx;
-    const glm::vec3 metallicIdColor = glm::vec3(1.0, 0.0, 0.0);
-    seg->color = metallicIdColor;
-    seg->shouldTerminate = true;
+
+    //thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, seg->remainingBounces);
+    float wDiffuse = (1.0f - mat->metallic) * (1.0f - mat->transmission);
+    float wReflection = 1.0f; 
+    float wTransmissive = (mat->transmission > EPSILON)? 1.0f : 0.0f;
+    
+    // probabilities used for choosing the type of sample 
+    float sum = wDiffuse + wReflection + wTransmissive; 
+    float pDiffuse = wDiffuse / sum; 
+    float pReflection = wReflection / sum; 
+    float pTransmissive = wTransmissive / sum; 
+
+    p->color = glm::vec3(pDiffuse);
+    p->shouldTerminate = true;
 }
 
 // https://en.wikipedia.org/wiki/File:Equirectangular_projection_SW.jpg
