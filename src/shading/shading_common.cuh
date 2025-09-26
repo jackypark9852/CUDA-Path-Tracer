@@ -12,18 +12,22 @@ __forceinline__ __device__ float Cos2Theta(const glm::vec3& w) { float c = w.z; 
 __forceinline__ __device__ float Sin2Theta(const glm::vec3& w) { float c = w.z; return fmaxf(0.f, 1.f - c * c); }
 __forceinline__ __device__ float SinTheta(const glm::vec3& w) { return sqrtf(Sin2Theta(w)); }
 __forceinline__ __device__ float AbsCosTheta(const glm::vec3& w) { return fabsf(w.z); }
-__forceinline__ __device__ float tanTheta(glm::vec3 w) { return SinTheta(w) / CosTheta(w); }
-__forceinline__ __device__ float tan2Theta(glm::vec3 w) { return Sin2Theta(w) / Cos2Theta(w); }
+__forceinline__ __device__ float TanTheta(glm::vec3 w) { return SinTheta(w) / CosTheta(w); }
+__forceinline__ __device__ float Tan2Theta(glm::vec3 w) { return Sin2Theta(w) / Cos2Theta(w); }
 
 __forceinline__ __device__ float CosPhi(glm::vec3 w) {
     float sinTheta = SinTheta(w);
     return (sinTheta == 0) ? 1 : glm::clamp(w.x / sinTheta, -1.f, 1.f);
 }
 
+__forceinline__ __device__ float Cos2Phi(glm::vec3 w) { return CosPhi(w) * CosPhi(w); }
+
 __forceinline__ __device__ float SinPhi(glm::vec3 w) {
     float sinTheta = SinTheta(w);
     return (sinTheta == 0) ? 0 : glm::clamp(w.y / sinTheta, -1.f, 1.f);
 }
+
+__forceinline__ __device__ float Sin2Phi(glm::vec3 w) { return SinPhi(w) * SinPhi(w); }
 
 __forceinline__ __device__ glm::vec3 SphericalDirection(float st, float ct, float phi) {
     return glm::vec3(st * cosf(phi), st * sinf(phi), ct);
@@ -46,4 +50,8 @@ __device__ __forceinline__ void worldToLocal(const glm::vec3& n, const glm::vec3
 __device__ __forceinline__ glm::vec3 localToWorld(const glm::vec3& n, const glm::vec3& wl) {
     glm::vec3 t, b; branchlessONB(n, t, b);
     return wl.x * t + wl.y * b + wl.z * n;
+}
+
+__device__ __forceinline__ bool SameHemisphere(glm::vec3 w, glm::vec3 wp) {
+    return w.z * wp.z > 0;
 }
