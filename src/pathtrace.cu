@@ -324,25 +324,25 @@ static void MaterialSortAndShade(
 
         switch (static_cast<MaterialType>(mt)) {
         case MaterialType::EMISSIVE:
-            kernShadeEmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            KernShadeEmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         case MaterialType::DIFFUSE:
-            kernShadeDiffuse KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            KernShadeDiffuse KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         case MaterialType::SPECULAR:
-            kernShadeSpecular KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            KernShadeSpecular KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         case MaterialType::TRANSMISSIVE:
-            kernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+            KernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         case MaterialType::PBR:
-            kernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
+            KernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
             break;
         case MaterialType::ENVMAP:
-            kernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
+            KernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
             break; 
         default:
-            kernShadeError KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice); 
+            KernShadeError KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice); 
             break;
         }
     }
@@ -406,7 +406,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         else { 
             // use all in one solution for shading 
             const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
-            kernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
+            KernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
                 iter,
                 numPaths,
                 dev_intersections,

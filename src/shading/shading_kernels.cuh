@@ -13,35 +13,17 @@
 
 #include <thrust/random.h>
 
-#define DEVICE_INLINE __device__ __forceinline__
+// device-inline helper for cuda kernels
+#define DEVICE_INLINE static __device__
 
-DEVICE_INLINE thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth)
-{
+// makes a deterministic per-path rng seeded by iteration, index, and depth
+DEVICE_INLINE thrust::default_random_engine MakeSeededRandomEngine(int iter, int index, int depth) {
     int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
     return thrust::default_random_engine(h);
-};
-
-
-DEVICE_INLINE void shadeEmissive_impl(
-    int iter, int idx,
-    ShadeableIntersection* s,
-    PathSegment* p,
-    Material* m)
-{
-    ShadeableIntersection isect = s[idx];
-    PathSegment* seg = p + idx;
-    if (seg->shouldTerminate) return;
-    if (isect.t <= 0.0f || seg->remainingBounces <= 0) {
-        seg->color = glm::vec3(0.0f);   
-        seg->shouldTerminate = true;
-        return;
-    }
-    Material mat = m[isect.materialId];
-    seg->color *= mat.baseColor * mat.emittance;
-    seg->shouldTerminate = true;
 }
 
-DEVICE_INLINE void shadeDiffuse_impl(
+// shades purely emissive hits and terminates the path
+DEVICE_INLINE void ShadeEmissiveImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
@@ -55,10 +37,31 @@ DEVICE_INLINE void shadeDiffuse_impl(
         seg->shouldTerminate = true;
         return;
     }
-    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, seg->remainingBounces);
+    Material mat = m[isect.materialId];
+    seg->color *= mat.baseColor * mat.emittance;
+    seg->shouldTerminate = true;
+}
+
+// cosine-weighted diffuse bounce
+DEVICE_INLINE void ShadeDiffuseImpl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m)
+{
+    ShadeableIntersection isect = s[idx];
+    PathSegment* seg = p + idx;
+    if (seg->shouldTerminate) return;
+    if (isect.t <= 0.0f || seg->remainingBounces <= 0) {
+        seg->color = glm::vec3(0.0f);
+        seg->shouldTerminate = true;
+        return;
+    }
+    thrust::default_random_engine rng = MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
     Material mat = m[isect.materialId];
     glm::vec3 n = isect.surfaceNormal;
-    glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng);
+    // uses project-provided cosine hemisphere sampler (world space)
+    glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
     seg->color *= mat.baseColor;
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect.t;
     seg->ray.origin = hitP + n * EPSILON;
@@ -66,7 +69,8 @@ DEVICE_INLINE void shadeDiffuse_impl(
     --seg->remainingBounces;
 }
 
-DEVICE_INLINE void shadeSpecular_impl(
+// perfect mirror reflection
+DEVICE_INLINE void ShadeSpecularImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
@@ -90,7 +94,8 @@ DEVICE_INLINE void shadeSpecular_impl(
     --seg->remainingBounces;
 }
 
-DEVICE_INLINE void shadeTransmissive_impl(
+// simple transmission using glm::refract with eta from material ior
+DEVICE_INLINE void ShadeTransmissiveImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
@@ -105,18 +110,26 @@ DEVICE_INLINE void shadeTransmissive_impl(
         return;
     }
     Material mat = m[isect.materialId];
+
     const float etaA = 1.0f;
     const float etaB = mat.ior;
+
     glm::vec3 n = glm::normalize(isect.surfaceNormal);
     glm::vec3 I = glm::normalize(seg->ray.direction);
     glm::vec3 wo = -I;
+
+    // maintains correct normal orientation for inside/outside
     const bool entering = glm::dot(wo, n) > 0.0f;
     glm::vec3 orientedN = entering ? n : -n;
+
     const float etaI = entering ? etaA : etaB;
     const float etaT = entering ? etaB : etaA;
     const float eta = etaI / etaT;
+
     glm::vec3 wi = glm::refract(I, orientedN, eta);
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect.t;
+
+    // total internal reflection fallback
     if (glm::length2(wi) < EPSILON) {
         wi = glm::reflect(I, orientedN);
         seg->ray.origin = hitP + orientedN * EPSILON;
@@ -129,7 +142,8 @@ DEVICE_INLINE void shadeTransmissive_impl(
     --seg->remainingBounces;
 }
 
-DEVICE_INLINE BSDFSample sampleBSDF(
+// samples the material bsdf (diffuse + ggx specular) and returns a single sampled lobe
+DEVICE_INLINE BSDFSample SampleBSDF(
     ShadeableIntersection* isect,
     PathSegment* seg,
     Material* mat,
@@ -138,77 +152,82 @@ DEVICE_INLINE BSDFSample sampleBSDF(
     BSDFSample sample{}; sample.pdf = 0.f;
     thrust::uniform_real_distribution<float> u01(0, 1);
 
-    // always work with unit vectors for ggx math
+    // uses local frame (+z = normal) for microfacet math
     glm::vec3 n = glm::normalize(isect->surfaceNormal);
     glm::vec3 woWorld = glm::normalize(-seg->ray.direction);
     glm::vec3 woLocal; worldToLocal(n, woWorld, woLocal);
 
-    // f0 follows disney: dielectric from ior, metallic uses basecolor
-    glm::vec3 F0_dielectric = f0_from_ior(mat->ior);
+    // dielectric f0 from ior; blend toward baseColor if metallic
+    glm::vec3 F0_dielectric = F0FromIOR(mat->ior);
     glm::vec3 F0 = glm::mix(F0_dielectric, mat->baseColor, mat->metallic);
 
     float NdotV = fmaxf(glm::dot(n, woWorld), 0.f);
-    glm::vec3 F_view = fresnelSchlick(F0, NdotV);
-    float F_avg = (F_view.x + F_view.y + F_view.z) * (1.f / 3.f);
+    glm::vec3 Fv = FresnelSchlick(F0, NdotV);
+    float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
+    float alpha = mat->roughness * mat->roughness;
 
-    // two lobes only: diffuse + specular
+    // lobe weights: diffuse suppressed by fresnel and metallic, specular by fresnel
     float wDiffuse = (1.f - mat->metallic) * (1.f - F_avg);
     float wRefl = F_avg;
+    float wRefl_sample = fmaxf(0.08f, wRefl); // keeps some specular sampling for low-f0
+    float wMS = MicrofacetMSWeight(alpha, F_avg);
 
-    // optional floor so specular still gets sampled for low-f0 dielectrics
-    float wRefl_sample = fmaxf(0.08f, wRefl);
-
-    //float wSum = wDiffuse + wRefl_sample + 1e-7f;
-    //float pDiffuse = wDiffuse / wSum;
-    //float pRefl = wRefl_sample / wSum;
-
-    float wSum = wDiffuse + wRefl_sample + 1e-7f;
-    float pDiffuse = 0.0f; 
-    float pRefl = 1.0f;
-
+    float wSum = wDiffuse + wRefl + wMS + 1e-7f;
+    float pDiffuse = wDiffuse / wSum;
+    float pRefl = wRefl / wSum;
+    float pMS = wMS / wSum;
 
     float xi = u01(rng);
 
-    // ---- diffuse path ----
-    //if (xi < pDiffuse) {
-    //    glm::vec3 wi = calculateRandomDirectionInHemisphere(n, rng); // cosine-weighted, world
-    //    wi = glm::normalize(wi);
+    // diffuse lobe (cosine-weighted in world space)
+    if (xi < pDiffuse) {
+        glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
+        wi = glm::normalize(wi);
 
-    //    float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
-    //    float fd_fres = disney_diffuse_fresnel(NdotL, NdotV);
+        float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
+        float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
 
-    //    // bsdf value: disney-ish lambert scaled by (1 - metallic) and fresnel factor
-    //    glm::vec3 fd = (1.f - mat->metallic) * fd_fres * lambertBRDF(mat->baseColor);
+        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(mat->baseColor);
 
-    //    sample.incomingDir = wi;               // world
-    //    sample.bsdfValue = fd;               // brdf value
-    //    sample.pdf = lambertPDF(NdotL) * pDiffuse; // include lobe prob
-    //    sample.isDelta = false;
-    //    return sample;
-    //}
-
-    // ---- specular reflection path ----
-    {
-        float alpha = mat->roughness * mat->roughness;
-        glm::vec3 wiWorld;
-        float pdf_lobe = 0.f;
-
-        glm::vec3 f_spec = Sample_f_microfacet_refl_vndf(
-            F0, n, woLocal, alpha, u01(rng), u01(rng), wiWorld, pdf_lobe);
-
-        if (pdf_lobe <= 0.f || !isfinite(pdf_lobe)) { sample.pdf = 0.f; return sample; }
-
-        sample.incomingDir = glm::normalize(wiWorld);
-        sample.bsdfValue = f_spec;
-        sample.pdf = pdf_lobe * pRefl;   // <-- include mixture prob!
+        sample.incomingDir = wi;                     // world space
+        sample.bsdfValue = fd;                     // brdf value
+        sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
         sample.isDelta = false;
         return sample;
     }
+    // specular reflection lobe sampled via vndf
+    else if (xi < pDiffuse + pRefl) {
+        float alpha = mat->roughness * mat->roughness;
+        glm::vec3 wiWorld;
+        float pdfLobe = 0.f;
 
+        glm::vec3 fSpec = SampleMicrofacetReflVNDF(
+            F0, n, woLocal, alpha, u01(rng), u01(rng), wiWorld, pdfLobe);
+
+        sample.incomingDir = glm::normalize(wiWorld);
+        sample.bsdfValue = fSpec;
+        sample.pdf = pdfLobe * pRefl;
+        sample.isDelta = false;
+        return sample;
+    }
+    // Multiple scattering compensation
+    else {
+        glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
+        wi = glm::normalize(wi);
+        float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
+        glm::vec3 msTint = MicrofacetMSTint(mat->baseColor, mat->metallic); 
+        glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);   // scale brdf by ms weight
+
+        sample.incomingDir = wi;
+        sample.bsdfValue = fms;
+        sample.pdf = LambertPDF(NdotL) * pMS;
+        sample.isDelta = false;
+        return sample;
+    }
 }
 
-
-DEVICE_INLINE void shadePbr_impl(
+// pbr shading entry: advances the path with sampled bsdf and accumulates throughput
+DEVICE_INLINE void ShadePbrImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
@@ -219,7 +238,7 @@ DEVICE_INLINE void shadePbr_impl(
     Material* mat = m + isect->materialId;
     if (seg->shouldTerminate) return;
 
-    // early exit if no valid hit or no bounces left
+    // early out if miss or exhausted
     if (isect->t <= 0.f || seg->remainingBounces <= 0) {
         seg->color = glm::vec3(0.f);
         seg->shouldTerminate = true;
@@ -227,9 +246,9 @@ DEVICE_INLINE void shadePbr_impl(
     }
 
     thrust::default_random_engine rng =
-        makeSeededRandomEngine(iter, idx, seg->remainingBounces);
+        MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
 
-    BSDFSample sample = sampleBSDF(isect, seg, mat, rng);
+    BSDFSample sample = SampleBSDF(isect, seg, mat, rng);
 
     glm::vec3 n = glm::normalize(isect->surfaceNormal);
     glm::vec3 wi = sample.incomingDir;
@@ -238,134 +257,94 @@ DEVICE_INLINE void shadePbr_impl(
 
     float NdotWi = fmaxf(glm::dot(n, wi), 0.f);
 
-    // guard against invalid sampling cases
-    if (pdf <= 1e-7f) {
-        seg->color = glm::vec3(1.f, 0.f, 0.f); // red = bad pdf
-        seg->shouldTerminate = true;
-        return;
-    }
-
-    if (NdotWi <= 0.f) {
-        seg->color = glm::vec3(0.f, 1.f, 0.f); // green = backfacing / wrong hemi
-        seg->shouldTerminate = true;
-        return;
-    }
-
-    if (!isfinite(pdf)) {
-        seg->color = glm::vec3(0.f, 0.f, 1.f); // blue = nan/inf pdf
-        seg->shouldTerminate = true;
-        return;
-    }
-
-    if (!isfinite(f.x) || !isfinite(f.y) || !isfinite(f.z)) {
-        seg->color = glm::vec3(1.f, 1.f, 0.f); // yellow = nan/inf bsdf value
-        seg->shouldTerminate = true;
-        return;
-    }
-
-    if (!isfinite(wi.x) || !isfinite(wi.y) || !isfinite(wi.z)) {
-        seg->color = glm::vec3(1.f, 0.f, 1.f); // magenta = nan/inf dir
-        seg->shouldTerminate = true;
-        return;
-    }
-
-    // optional clamp to control fireflies
-    float ratio = fminf(NdotWi / pdf, 1e4f);
-
-    // advance ray
+    // advance ray origin and direction
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
     seg->ray.origin = hitP + n * EPSILON;
     seg->ray.direction = glm::normalize(wi);
 
-    // accumulate throughput
-    seg->color *= f * fminf(NdotWi / pdf, 1e4f);
-
+    // accumulate throughput with standard path tracing weight
+    seg->color *= f * fminf(NdotWi / pdf, FLT_MAX);
 
     --seg->remainingBounces;
 }
 
-// https://en.wikipedia.org/wiki/File:Equirectangular_projection_SW.jpg
-DEVICE_INLINE glm::vec2 sphere2mapUV_Equirectangular(glm::vec3 p)
-{
+// maps a direction on the unit sphere to equirectangular uv
+DEVICE_INLINE glm::vec2 Sphere2MapUvEquirectangular(glm::vec3 p) {
     return glm::vec2(
-        atan2(p.x, -p.z) / (2 * PI) + .5,
-        -p.y * .5 + .5
+        atan2(p.x, -p.z) / (2 * PI) + .5f,
+        -p.y * .5f + .5f
     );
 }
 
-
-DEVICE_INLINE void shadeEnvMap_impl(
+// shades with an environment map and terminates the path
+DEVICE_INLINE void ShadeEnvMapImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
-    const cpt::Texture2D envMap
-) 
-{
-    PathSegment* seg = p + idx; 
-    glm::vec2 uv = sphere2mapUV_Equirectangular(normalize(seg->ray.direction));
-    float4 texel = tex2D<float4>(envMap.texObj, uv.x, uv.y);
-    
-    seg->color *= glm::vec3(texel.x, texel.y, texel.z); 
-    seg->shouldTerminate = true; 
-}
-
-
-DEVICE_INLINE void shadeError_impl(
-    int iter, int idx,
-    ShadeableIntersection* s,
-    PathSegment* p
-)
+    const cpt::Texture2D envMap)
 {
     PathSegment* seg = p + idx;
+    glm::vec2 uv = Sphere2MapUvEquirectangular(normalize(seg->ray.direction));
+    float4 texel = tex2D<float4>(envMap.texObj, uv.x, uv.y);
 
-    glm::vec3 errorColor = glm::vec3(1.0f, 0.0f, 1.0f); // magenta
-    seg->color = errorColor; 
+    seg->color *= glm::vec3(texel.x, texel.y, texel.z);
     seg->shouldTerminate = true;
 }
 
+// writes a conspicuous error color and terminates the path
+DEVICE_INLINE void ShadeErrorImpl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p)
+{
+    PathSegment* seg = p + idx;
+    glm::vec3 errorColor = glm::vec3(1.0f, 0.0f, 1.0f);
+    seg->color = errorColor;
+    seg->shouldTerminate = true;
+}
 
-__global__ void kernShadeEmissive(
-    int iter, int n, 
-    ShadeableIntersection* s, 
-    PathSegment* p, 
-    Material* m); 
-
-__global__ void kernShadeDiffuse(
-    int iter, int n, 
-    ShadeableIntersection* s, 
-    PathSegment* p, 
-    Material* m); 
-
-__global__ void kernShadeSpecular(
-    int iter, int n, 
-    ShadeableIntersection* s, 
-    PathSegment* p, 
-    Material* m);
-
-__global__ void kernShadeTransmissive(
-    int iter, int n, 
-    ShadeableIntersection* s, 
-    PathSegment* p, 
-    Material* m);
-
-__global__ void kernShadePbr(
+__global__ void KernShadeEmissive(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p,
     Material* m);
 
-__global__ void kernShadeEnvMap(
+__global__ void KernShadeDiffuse(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
+
+__global__ void KernShadeSpecular(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
+
+__global__ void KernShadeTransmissive(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
+
+__global__ void KernShadePbr(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p,
+    Material* m);
+
+__global__ void KernShadeEnvMap(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p,
     const cpt::Texture2D envMap);
 
-__global__ void kernShadeError(
+__global__ void KernShadeError(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p);
 
-__global__ void kernShadeAllMaterials(
+__global__ void KernShadeAllMaterials(
     int iter, int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
