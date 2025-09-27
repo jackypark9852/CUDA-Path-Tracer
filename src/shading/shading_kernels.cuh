@@ -14,7 +14,7 @@
 #include <thrust/random.h>
 
 // device-inline helper for cuda kernels
-#define DEVICE_INLINE static __device__
+#define DEVICE_INLINE static __device__ __forceinline__
 
 // makes a deterministic per-path rng seeded by iteration, index, and depth
 DEVICE_INLINE thrust::default_random_engine MakeSeededRandomEngine(int iter, int index, int depth) {
@@ -152,10 +152,9 @@ struct SmoothRefractSample {
 DEVICE_INLINE SmoothRefractSample SampleSmoothRefractOnly(
     const glm::vec3& nW,   // world normal
     const glm::vec3& woW,  // world outgoing
-    float iorB             // material ior (glass)
+    float iorB
 ) {
     // implements only refraction. no fresnel split. on tir, falls back to perfect reflection.
-    // throughput scaling: transmission uses eta^2, reflection uses 1.
     SmoothRefractSample out{};
 
     glm::vec3 woL; worldToLocal(nW, glm::normalize(woW), woL);
@@ -229,8 +228,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     float wTrans = transmissive ? (1.f - F_avg) : 0.f; // transmission is complementary to 
 
     // sampling floors
-    //float wReflS = fmaxf(0.08f, wRefl);
-    float wReflS = 0.0f; 
+    float wReflS = fmaxf(0.08f, wRefl);
     float wTransS = wTrans;
 
     // mixture probabilities
@@ -275,16 +273,17 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         return sample;
     }
     else if (xi < pDiffuse + pRefl + pTrans) {
+        // TODO: implement MicrofacetBTDF
         SmoothRefractSample g = SampleSmoothRefractOnly(
-            glm::normalize(isect->surfaceNormal), // world normal
-            woWorld,                              // world outgoing
-            mat->ior                               // glass ior
+            glm::normalize(isect->surfaceNormal),
+            woWorld,
+            mat->ior
         );
 
         BSDFSample sample{};
         sample.incomingDir = glm::normalize(g.wiW);
-        sample.bsdfValue = glm::vec3(1.0f);    // encodes eta^2 or 1 divided by |cosNI|
-        sample.pdf = g.pdf;  // 1 for delta
+        sample.bsdfValue = glm::vec3(1.0f);
+        sample.pdf = g.pdf;
         sample.isDelta = g.isDelta;
         return sample;
     }
@@ -295,7 +294,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         wi = glm::normalize(wi);
         float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
         glm::vec3 msTint = MicrofacetMSTint(mat->baseColor, mat->metallic); 
-        glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);   // scale brdf by ms weight
+        glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);
 
         sample.incomingDir = wi;
         sample.bsdfValue = fms;
@@ -328,15 +327,10 @@ DEVICE_INLINE void ShadePbrImpl(
 
     BSDFSample sample = SampleBSDF(isect, seg, mat, rng);
 
-    // dev-note: prefer geometric normal for smooth dielectric interfaces if available
     glm::vec3 nW = glm::normalize(isect->surfaceNormal);
     glm::vec3 wi = glm::normalize(sample.incomingDir);
     float pdf = sample.pdf;
     glm::vec3 f = sample.bsdfValue;
-
-    // basic validity guards
-    if (!(pdf > 0.f) || !isfinite(pdf)) { seg->shouldTerminate = true; return; }
-    if (!isfinite(wi.x) || !isfinite(wi.y) || !isfinite(wi.z)) { seg->shouldTerminate = true; return; }
 
     // advance ray origin and direction with oriented normal logic
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
@@ -350,7 +344,7 @@ DEVICE_INLINE void ShadePbrImpl(
     bool isTransmission = (glm::dot(nW, woW) * glm::dot(nW, wi)) < 0.0f;
 
     // choose offset direction and epsilon
-    float epsRefl = EPSILON;                         // keep project default for reflection
+    float epsRefl = EPSILON;
     float epsRefr = 3e-4f;
     glm::vec3 offsetN = isTransmission ? (-orientedN) : orientedN;
     float eps = isTransmission ? epsRefr : epsRefl;

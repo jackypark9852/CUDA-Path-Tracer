@@ -6,7 +6,7 @@
 #include "shading_common.cuh"
 
 // device inline helper for cuda kernels
-#define DEVICE_INLINE static __device__
+#define DEVICE_INLINE static __device__ __forceinline__
 
 // schlick fresnel with clamped cosine
 DEVICE_INLINE glm::vec3 FresnelSchlick(const glm::vec3& F0, float cosTheta) {
