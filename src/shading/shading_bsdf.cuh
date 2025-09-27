@@ -176,16 +176,21 @@ DEVICE_INLINE float FresnelDielectric(float cosThetaI, float etaI, float etaT) {
     return 0.5f * (rParl * rParl + rPerp * rPerp);
 }
 
-// refract a vector i through microfacet normal m with ratio eta = eta_i/eta_t
-DEVICE_INLINE bool RefractMicrofacet(const glm::vec3& I, const glm::vec3& m, float eta, glm::vec3& wt) {
-    float cosThetaI = glm::dot(m, I);
-    float sin2ThetaI = fmaxf(0.f, 1.f - cosThetaI * cosThetaI);
-    float sin2ThetaT = eta * eta * sin2ThetaI;
-    if (sin2ThetaT >= 1.f) return false; // tir
-    float cosThetaT = sqrtf(fmaxf(0.f, 1.f - sin2ThetaT));
-    wt = glm::normalize(eta * (-I) + (eta * cosThetaI - copysignf(cosThetaT, cosThetaI)) * m);
+
+DEVICE_INLINE bool RefractLocal(const glm::vec3& woL, float eta, glm::vec3& wiLOut) {
+    // snell refraction in local (+z is normal). returns false on tir.
+    float cosI = woL.z;
+    float sin2I = fmaxf(0.f, 1.f - cosI * cosI);
+    float sin2T = eta * eta * sin2I;
+    if (sin2T >= 1.f) return false; // tir
+    float cosT = sqrtf(fmaxf(0.f, 1.f - sin2T));
+
+    // transmitted dir flips hemisphere across the interface
+    float z = (woL.z > 0.f) ? -cosT : cosT;
+    wiLOut = glm::normalize(glm::vec3(-eta * woL.x, -eta * woL.y, z));
     return true;
 }
+
 
 // ggx microfacet btdf (isotropic), local frame (+z = normal)
 // wi and wo must be on opposite sides of the interface (wi.z * wo.z < 0)
@@ -220,81 +225,81 @@ DEVICE_INLINE glm::vec3 MicrofacetBTDF(
 
 // sample the ggx transmission lobe using vndf half-vector sampling + snell refraction
 // returns bsdf value and pdf for the transmission lobe; wiWorld is in world space
-DEVICE_INLINE glm::vec3 SampleMicrofacetBTDFVNDF(
-    const glm::vec3& n,            // world normal (+z in local frame)
-    const glm::vec3& woLocal,      // outgoing in local frame
-    float alpha, float etaI, float etaT,
-    float u1, float u2,
-    glm::vec3& wiWorld, float& pdfLobe)
-{
-    const float ALPHA_EPS = 1e-5f;
-
-    // alpha == 0 : perfect smooth interface => delta event (Fresnel split)
-    if (alpha <= ALPHA_EPS) {
-        // macro normal for the microfacet
-        glm::vec3 m = glm::vec3(0.f, 0.f, 1.f);
-        if (woLocal.z < 0.f) m = -m;
-
-        const float F = FresnelDielectric(glm::dot(woLocal, m), etaI, etaT);
-
-        // use u1 to choose reflection vs refraction by Fresnel
-        if (u1 < F) {
-            // reflection branch
-            glm::vec3 wiLocal = reflect(-woLocal, m);
-            if (wiLocal.z == 0.f) { pdfLobe = 1.f; return glm::vec3(1.f); }
-            wiWorld = localToWorld(n, wiLocal);
-            pdfLobe = 1.f;       // delta convention
-            return glm::vec3(1.f);
-        }
-        else {
-            // refraction branch
-            const float eta = (woLocal.z > 0.f) ? (etaI / etaT) : (etaT / etaI);
-            glm::vec3 wiLocal;
-            if (!RefractMicrofacet(woLocal, m, eta, wiLocal)) {
-                // in theory with Fresnel split this should not happen, but guard anyway:
-                glm::vec3 wiRef = reflect(-woLocal, m);
-                wiWorld = localToWorld(n, wiRef);
-                pdfLobe = 1.f;   // delta
-                return glm::vec3(1.f);
-            }
-            wiWorld = localToWorld(n, wiLocal);
-            pdfLobe = 1.f;       // delta
-            return glm::vec3(1.f);
-        }
-    }
-
-    // rough branch: standard VNDF + Walter mapping
-    pdfLobe = 0.f;
-
-    glm::vec3 m = SampleWhVNDF(woLocal, alpha, u1, u2);
-    if (m.z <= 0.f) m = -m; // keep m on macro-normal side
-
-    // refraction across m
-    glm::vec3 wiLocal;
-    const float eta = (woLocal.z > 0.f) ? (etaI / etaT) : (etaT / etaI);
-    if (!RefractMicrofacet(woLocal, m, eta, wiLocal)) return glm::vec3(0);
-
-    // must be opposite hemispheres
-    if (wiLocal.z * woLocal.z >= 0.f) return glm::vec3(0);
-
-    // pdf mapped from half-vector domain
-    const float D = DGGX(m, alpha);
-    const float G1 = G1SmithGGX(woLocal, alpha);
-    const float cosWoM = fabsf(glm::dot(woLocal, m));
-    const float cosWiM = fabsf(glm::dot(wiLocal, m));
-    const float denom = fmaxf(1e-7f, etaI * cosWoM + etaT * cosWiM);
-
-    // p(wi) = D(m) * G1(wo) * |cosWoM| * |cosWiM| * etaT^2 /
-    //         ( |wo.n| * |wi.n| * (etaI*cosWoM + etaT*cosWiM)^2 )
-    pdfLobe = (D * G1 * cosWoM * cosWiM * (etaT * etaT)) /
-        (fmaxf(1e-7f, fabsf(woLocal.z) * fabsf(wiLocal.z)) * denom * denom);
-
-    // bsdf value (Walter 2007)
-    glm::vec3 f = MicrofacetBTDF(woLocal, wiLocal, alpha, etaI, etaT);
-
-    wiWorld = localToWorld(n, wiLocal);
-    return f;
-}
+//DEVICE_INLINE glm::vec3 SampleMicrofacetBTDFVNDF(
+//    const glm::vec3& n,            // world normal (+z in local frame)
+//    const glm::vec3& woLocal,      // outgoing in local frame
+//    float alpha, float etaI, float etaT,
+//    float u1, float u2,
+//    glm::vec3& wiWorld, float& pdfLobe)
+//{
+//    const float ALPHA_EPS = 1e-5f;
+//
+//    // alpha == 0 : perfect smooth interface => delta event (Fresnel split)
+//    if (alpha <= ALPHA_EPS) {
+//        // macro normal for the microfacet
+//        glm::vec3 m = glm::vec3(0.f, 0.f, 1.f);
+//        if (woLocal.z < 0.f) m = -m;
+//
+//        const float F = FresnelDielectric(glm::dot(woLocal, m), etaI, etaT);
+//
+//        // use u1 to choose reflection vs refraction by Fresnel
+//        if (u1 < F) {
+//            // reflection branch
+//            glm::vec3 wiLocal = reflect(-woLocal, m);
+//            if (wiLocal.z == 0.f) { pdfLobe = 1.f; return glm::vec3(1.f); }
+//            wiWorld = localToWorld(n, wiLocal);
+//            pdfLobe = 1.f;       // delta convention
+//            return glm::vec3(1.f);
+//        }
+//        else {
+//            // refraction branch
+//            const float eta = (woLocal.z > 0.f) ? (etaI / etaT) : (etaT / etaI);
+//            glm::vec3 wiLocal;
+//            if (!RefractMicrofacet(woLocal, m, eta, wiLocal)) {
+//                // in theory with Fresnel split this should not happen, but guard anyway:
+//                glm::vec3 wiRef = reflect(-woLocal, m);
+//                wiWorld = localToWorld(n, wiRef);
+//                pdfLobe = 1.f;   // delta
+//                return glm::vec3(1.f);
+//            }
+//            wiWorld = localToWorld(n, wiLocal);
+//            pdfLobe = 1.f;       // delta
+//            return glm::vec3(1.f);
+//        }
+//    }
+//
+//    // rough branch: standard VNDF + Walter mapping
+//    pdfLobe = 0.f;
+//
+//    glm::vec3 m = SampleWhVNDF(woLocal, alpha, u1, u2);
+//    if (m.z <= 0.f) m = -m; // keep m on macro-normal side
+//
+//    // refraction across m
+//    glm::vec3 wiLocal;
+//    const float eta = (woLocal.z > 0.f) ? (etaI / etaT) : (etaT / etaI);
+//    if (!RefractMicrofacet(woLocal, m, eta, wiLocal)) return glm::vec3(0);
+//
+//    // must be opposite hemispheres
+//    if (wiLocal.z * woLocal.z >= 0.f) return glm::vec3(0);
+//
+//    // pdf mapped from half-vector domain
+//    const float D = DGGX(m, alpha);
+//    const float G1 = G1SmithGGX(woLocal, alpha);
+//    const float cosWoM = fabsf(glm::dot(woLocal, m));
+//    const float cosWiM = fabsf(glm::dot(wiLocal, m));
+//    const float denom = fmaxf(1e-7f, etaI * cosWoM + etaT * cosWiM);
+//
+//    // p(wi) = D(m) * G1(wo) * |cosWoM| * |cosWiM| * etaT^2 /
+//    //         ( |wo.n| * |wi.n| * (etaI*cosWoM + etaT*cosWiM)^2 )
+//    pdfLobe = (D * G1 * cosWoM * cosWiM * (etaT * etaT)) /
+//        (fmaxf(1e-7f, fabsf(woLocal.z) * fabsf(wiLocal.z)) * denom * denom);
+//
+//    // bsdf value (Walter 2007)
+//    glm::vec3 f = MicrofacetBTDF(woLocal, wiLocal, alpha, etaI, etaT);
+//
+//    wiWorld = localToWorld(n, wiLocal);
+//    return f;
+//}
 
 
 // lambert brdf and pdf helpers

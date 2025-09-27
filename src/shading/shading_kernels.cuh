@@ -142,6 +142,57 @@ DEVICE_INLINE void ShadeTransmissiveImpl(
     --seg->remainingBounces;
 }
 
+struct SmoothRefractSample {
+    glm::vec3 wiW = glm::vec3(0);
+    glm::vec3 f = glm::vec3(0);
+    float     pdf = 1.f;    // delta convention
+    bool      isDelta = true;
+};
+
+DEVICE_INLINE SmoothRefractSample SampleSmoothRefractOnly(
+    const glm::vec3& nW,   // world normal
+    const glm::vec3& woW,  // world outgoing
+    float iorB             // material ior (glass)
+) {
+    // implements only refraction. no fresnel split. on tir, falls back to perfect reflection.
+    // throughput scaling: transmission uses eta^2, reflection uses 1.
+    SmoothRefractSample out{};
+
+    glm::vec3 woL; worldToLocal(nW, glm::normalize(woW), woL);
+
+    const float etaA = 1.0f;
+    const float etaB = iorB;
+    const bool entering = (woL.z > 0.f);
+    const float etaI = entering ? etaA : etaB;
+    const float etaT = entering ? etaB : etaA;
+    const float eta = etaI / etaT;
+
+    glm::vec3 wiL;
+    bool refrOk = RefractLocal(woL, eta, wiL);
+
+    if (refrOk) {
+        // refraction branch (no fresnel): weight = eta^2
+        out.wiW = localToWorld(nW, wiL);
+        const float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, out.wiW)));
+        const float weight = eta * eta;
+        out.f = glm::vec3(weight / cosNI);
+        out.pdf = 1.f;      // delta
+        out.isDelta = true;
+        return out;
+    }
+    else {
+        // tir fallback: perfect mirror, weight = 1
+        glm::vec3 wiLR = glm::reflect(-woL, glm::vec3(0, 0, 1));
+        if (wiLR.z <= 0.f) wiLR.z = fabsf(wiLR.z); // safety
+        out.wiW = localToWorld(nW, wiLR);
+        const float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, out.wiW)));
+        out.f = glm::vec3(1.f / cosNI);
+        out.pdf = 1.f;      // delta
+        out.isDelta = true;
+        return out;
+    }
+}
+
 // samples the material bsdf (diffuse + ggx specular) and returns a single sampled lobe
 DEVICE_INLINE BSDFSample SampleBSDF(
     ShadeableIntersection* isect,
@@ -224,42 +275,17 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         return sample;
     }
     else if (xi < pDiffuse + pRefl + pTrans) {
-        glm::vec3 wiWorld; float pdfLobe = 0.f;
-        glm::vec3 fT = SampleMicrofacetBTDFVNDF(
-            n, woLocal, alpha, etaI, etaT, u01(rng), u01(rng), wiWorld, pdfLobe);
+        SmoothRefractSample g = SampleSmoothRefractOnly(
+            glm::normalize(isect->surfaceNormal), // world normal
+            woWorld,                              // world outgoing
+            mat->ior                               // glass ior
+        );
 
-        // alpha == 0 case inside the sampler returns pdfLobe == 1 and f == 1 (delta)
-        if (alpha <= 1e-5f) {
-            // use the discrete mixture probability for the chosen lobe
-            sample.incomingDir = glm::normalize(wiWorld);
-            sample.bsdfValue = glm::vec3(1.f);   // delta convention
-            sample.pdf = pTrans;           // discrete prob of transmission lobe
-            sample.isDelta = true;
-            return sample;
-        }
-
-        // rough case: if TIR or invalid sample, fall back to reflection lobe
-        if (!(pdfLobe > 0.f) || !isfinite(pdfLobe)) {
-            float pdfRefl = 0.f;
-            glm::vec3 wiReflWorld;
-            glm::vec3 fR = SampleMicrofacetReflVNDF(
-                F0, n, woLocal, alpha, u01(rng), u01(rng), wiReflWorld, pdfRefl);
-
-            if (!(pdfRefl > 0.f)) {
-                sample.pdf = 1.f; sample.bsdfValue = glm::vec3(0); sample.incomingDir = n; return sample;
-            }
-
-            sample.incomingDir = normalize(wiReflWorld);
-            sample.bsdfValue = fR;
-            sample.pdf = pdfRefl * pRefl;  // switched to reflection lobe
-            sample.isDelta = false;
-            return sample;
-        }
-
-        sample.incomingDir = glm::normalize(wiWorld);
-        sample.bsdfValue = fT;
-        sample.pdf = pdfLobe * pTrans;     // rough transmission: standard mixture pdf
-        sample.isDelta = false;
+        BSDFSample sample{};
+        sample.incomingDir = glm::normalize(g.wiW);
+        sample.bsdfValue = glm::vec3(1.0f);    // encodes eta^2 or 1 divided by |cosNI|
+        sample.pdf = g.pdf;  // 1 for delta
+        sample.isDelta = g.isDelta;
         return sample;
     }
 
@@ -279,7 +305,6 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     }
 }
 
-// pbr shading entry: advances the path with sampled bsdf and accumulates throughput
 DEVICE_INLINE void ShadePbrImpl(
     int iter, int idx,
     ShadeableIntersection* s,
@@ -303,24 +328,39 @@ DEVICE_INLINE void ShadePbrImpl(
 
     BSDFSample sample = SampleBSDF(isect, seg, mat, rng);
 
-    glm::vec3 n = glm::normalize(isect->surfaceNormal);
-    glm::vec3 wi = sample.incomingDir;
+    // dev-note: prefer geometric normal for smooth dielectric interfaces if available
+    glm::vec3 nW = glm::normalize(isect->surfaceNormal);
+    glm::vec3 wi = glm::normalize(sample.incomingDir);
     float pdf = sample.pdf;
     glm::vec3 f = sample.bsdfValue;
 
-    // advance ray origin and direction
-    glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
-    // choose offset direction by the sign of dot(n, wi)
-    float side = (glm::dot(n, wi) > 0.f) ? 1.f : -1.f;
-    seg->ray.origin = hitP + (side * n) * EPSILON;
-    seg->ray.direction = glm::normalize(wi);
+    // basic validity guards
+    if (!(pdf > 0.f) || !isfinite(pdf)) { seg->shouldTerminate = true; return; }
+    if (!isfinite(wi.x) || !isfinite(wi.y) || !isfinite(wi.z)) { seg->shouldTerminate = true; return; }
 
+    // advance ray origin and direction with oriented normal logic
+    glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
+
+    // compute entering based on outgoing (toward camera) direction
+    glm::vec3 woW = glm::normalize(-seg->ray.direction);
+    bool entering = glm::dot(woW, nW) > 0.0f;
+    glm::vec3 orientedN = entering ? nW : -nW;
+
+    // transmission if wi and wo are on opposite sides of the surface
+    bool isTransmission = (glm::dot(nW, woW) * glm::dot(nW, wi)) < 0.0f;
+
+    // choose offset direction and epsilon
+    float epsRefl = EPSILON;                         // keep project default for reflection
+    float epsRefr = 3e-4f;
+    glm::vec3 offsetN = isTransmission ? (-orientedN) : orientedN;
+    float eps = isTransmission ? epsRefr : epsRefl;
+
+    seg->ray.origin = hitP + offsetN * eps;
+    seg->ray.direction = wi;
 
     // accumulate throughput with standard path tracing weight
-    float cosNI = fabsf(glm::dot(n, wi));
+    float cosNI = fabsf(glm::dot(nW, wi));
     seg->color *= f * fminf(cosNI / pdf, FLT_MAX);
-
-    if (!(pdf > 0.f) || !isfinite(pdf)) { seg->shouldTerminate = true; return; }
 
     --seg->remainingBounces;
 }
