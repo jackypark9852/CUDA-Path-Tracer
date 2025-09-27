@@ -1,0 +1,24 @@
+{
+  "Materials": {
+    "mat_glass": { "TYPE": "Pbr", "RGB": [1.0, 1.0, 1.0], "METALLIC": 0.0, "ROUGHNESS": 0.0, "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 1.0 }
+  },
+
+  "Camera": {
+    "RES": [800, 800],
+    "FOVY": 30.0,
+    "ITERATIONS": 5000,
+    "DEPTH": 8,
+    "FILE": "single_glass",
+    "EYE": [1.5, 0.0, 30.0],
+    "LOOKAT": [1.5, 0.0, 10.0],
+    "UP": [0.0, 1.0, 0.0]
+  },
+
+  "Objects": [
+    { "TYPE": "sphere", "MATERIAL": "mat_glass", "TRANS": [1.5, 0.0, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [6.0, 6.0, 6.0] }
+  ],
+
+  "EnvironmentMap": {
+    "Path": "./textures/brown_photostudio_02_4k.hdr"
+  }
+}

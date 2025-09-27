@@ -166,16 +166,29 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
     float alpha = mat->roughness * mat->roughness;
 
-    // lobe weights: diffuse suppressed by fresnel and metallic, specular by fresnel
-    float wDiffuse = (1.f - mat->metallic) * (1.f - F_avg);
-    float wRefl = F_avg;
-    float wRefl_sample = fmaxf(0.08f, wRefl); // keeps some specular sampling for low-f0
-    float wMS = MicrofacetMSWeight(alpha, F_avg);
+    // transmission params
+    const bool transmissive = (mat->metallic < EPSILON && mat->transmission > 0.0f);
+    float etaI = 1.0f, etaT = mat->ior;
+    if (woLocal.z < 0.f) { etaI = mat->ior; etaT = 1.0f; } // outside or inside
 
-    float wSum = wDiffuse + wRefl + wMS + 1e-7f;
+    // lobe weights: diffuse suppressed by fresnel and metallic, specular by fresnel
+    float wDiffuse = (1.f - mat->metallic) * (1.f - mat->transmission) * (1.f - F_avg);
+    float wRefl = F_avg;    
+    float wMS = (transmissive)? 0.0f : MicrofacetMSWeight(alpha, F_avg);
+    float wTrans = transmissive ? (1.f - F_avg) : 0.f; // transmission is complementary to 
+
+    // sampling floors
+    //float wReflS = fmaxf(0.08f, wRefl);
+    float wReflS = 0.0f; 
+    float wTransS = wTrans;
+
+    // mixture probabilities
+    float wSum = wDiffuse + wReflS + wTransS + wMS + 1e-7f;
     float pDiffuse = wDiffuse / wSum;
-    float pRefl = wRefl / wSum;
+    float pRefl = wReflS / wSum;
+    float pTrans = wTransS / wSum;
     float pMS = wMS / wSum;
+
 
     float xi = u01(rng);
 
@@ -210,6 +223,46 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         sample.isDelta = false;
         return sample;
     }
+    else if (xi < pDiffuse + pRefl + pTrans) {
+        glm::vec3 wiWorld; float pdfLobe = 0.f;
+        glm::vec3 fT = SampleMicrofacetBTDFVNDF(
+            n, woLocal, alpha, etaI, etaT, u01(rng), u01(rng), wiWorld, pdfLobe);
+
+        // alpha == 0 case inside the sampler returns pdfLobe == 1 and f == 1 (delta)
+        if (alpha <= 1e-5f) {
+            // use the discrete mixture probability for the chosen lobe
+            sample.incomingDir = glm::normalize(wiWorld);
+            sample.bsdfValue = glm::vec3(1.f);   // delta convention
+            sample.pdf = pTrans;           // discrete prob of transmission lobe
+            sample.isDelta = true;
+            return sample;
+        }
+
+        // rough case: if TIR or invalid sample, fall back to reflection lobe
+        if (!(pdfLobe > 0.f) || !isfinite(pdfLobe)) {
+            float pdfRefl = 0.f;
+            glm::vec3 wiReflWorld;
+            glm::vec3 fR = SampleMicrofacetReflVNDF(
+                F0, n, woLocal, alpha, u01(rng), u01(rng), wiReflWorld, pdfRefl);
+
+            if (!(pdfRefl > 0.f)) {
+                sample.pdf = 1.f; sample.bsdfValue = glm::vec3(0); sample.incomingDir = n; return sample;
+            }
+
+            sample.incomingDir = normalize(wiReflWorld);
+            sample.bsdfValue = fR;
+            sample.pdf = pdfRefl * pRefl;  // switched to reflection lobe
+            sample.isDelta = false;
+            return sample;
+        }
+
+        sample.incomingDir = glm::normalize(wiWorld);
+        sample.bsdfValue = fT;
+        sample.pdf = pdfLobe * pTrans;     // rough transmission: standard mixture pdf
+        sample.isDelta = false;
+        return sample;
+    }
+
     // Multiple scattering compensation
     else {
         glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
@@ -255,15 +308,19 @@ DEVICE_INLINE void ShadePbrImpl(
     float pdf = sample.pdf;
     glm::vec3 f = sample.bsdfValue;
 
-    float NdotWi = fmaxf(glm::dot(n, wi), 0.f);
-
     // advance ray origin and direction
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
-    seg->ray.origin = hitP + n * EPSILON;
+    // choose offset direction by the sign of dot(n, wi)
+    float side = (glm::dot(n, wi) > 0.f) ? 1.f : -1.f;
+    seg->ray.origin = hitP + (side * n) * EPSILON;
     seg->ray.direction = glm::normalize(wi);
 
+
     // accumulate throughput with standard path tracing weight
-    seg->color *= f * fminf(NdotWi / pdf, FLT_MAX);
+    float cosNI = fabsf(glm::dot(n, wi));
+    seg->color *= f * fminf(cosNI / pdf, FLT_MAX);
+
+    if (!(pdf > 0.f) || !isfinite(pdf)) { seg->shouldTerminate = true; return; }
 
     --seg->remainingBounces;
 }
