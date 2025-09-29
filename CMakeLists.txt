@@ -51,6 +51,7 @@
         src/interactions.h
         src/intersections.h
         src/glslUtility.hpp
+        src/gltf_loader.h
         src/pathtrace.h
         src/scene.h
         src/sceneStructs.h
@@ -67,6 +68,7 @@
         src/stb.cpp
         src/image.cpp
         src/glslUtility.cpp
+        src/gltf_loader.cpp
         src/pathtrace.cu
         src/intersections.cu
         src/interactions.cu

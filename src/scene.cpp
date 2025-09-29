@@ -47,100 +47,136 @@ void Scene::loadFromJSON(const std::string& jsonName)
 {
     std::ifstream f(jsonName);
     json data = json::parse(f);
-    const auto& materialsData = data["Materials"];
     std::unordered_map<std::string, uint32_t> MatNameToID;
-    for (const auto& item : materialsData.items())
-    {
-        const auto& name = item.key();
-        const auto& p = item.value();
-        Material newMaterial{};
-        if (p["TYPE"] == "Diffuse")
+    if (data.contains("Materials")) {
+        const auto& materialsData = data["Materials"];
+        for (const auto& item : materialsData.items())
         {
-            newMaterial.type = MaterialType::DIFFUSE;
-            const auto& col = p["RGB"];
-            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-        } 
-        else if (p["TYPE"] == "Emitting")
-        {
-            newMaterial.type = MaterialType::EMISSIVE;
-            const auto& col = p["RGB"];
-            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.emittance = p["EMITTANCE"];
+            const auto& name = item.key();
+            const auto& p = item.value();
+            Material newMaterial{};
+            if (p["TYPE"] == "Diffuse")
+            {
+                newMaterial.type = MaterialType::DIFFUSE;
+                const auto& col = p["RGB"];
+                newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+            }
+            else if (p["TYPE"] == "Emitting")
+            {
+                newMaterial.type = MaterialType::EMISSIVE;
+                const auto& col = p["RGB"];
+                newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+                newMaterial.emittance = p["EMITTANCE"];
+            }
+            else if (p["TYPE"] == "Specular")
+            {
+                newMaterial.type = MaterialType::SPECULAR;
+                const auto& col = p["RGB"];
+                newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+            }
+            else if (p["TYPE"] == "Transmissive")
+            {
+                newMaterial.type = MaterialType::TRANSMISSIVE;
+                const auto& col = p["RGB"];
+                newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+                newMaterial.ior = p["IOR"];
+            }
+            else if (p["TYPE"] == "Pbr")
+            {
+                newMaterial.type = MaterialType::PBR;
+                const auto& col = p["RGB"];
+                newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
+                newMaterial.ior = p["IOR"];
+                newMaterial.emittance = p["EMITTANCE"];
+                newMaterial.metallic = p["METALLIC"];
+                newMaterial.roughness = p["ROUGHNESS"];
+                newMaterial.transmission = p["TRANSMISSIVE"];
+            }
+            MatNameToID[name] = materials.size();
+            materials.emplace_back(newMaterial);
         }
-        else if (p["TYPE"] == "Specular")
-        {
-            newMaterial.type = MaterialType::SPECULAR; 
-            const auto& col = p["RGB"];
-            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-        }
-        else if (p["TYPE"] == "Transmissive") 
-        {
-            newMaterial.type = MaterialType::TRANSMISSIVE; 
-            const auto& col = p["RGB"];
-            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.ior = p["IOR"];
-        }
-        else if (p["TYPE"] == "Pbr")
-        {
-            newMaterial.type = MaterialType::PBR; 
-            const auto& col = p["RGB"]; 
-            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.ior = p["IOR"]; 
-            newMaterial.emittance = p["EMITTANCE"]; 
-            newMaterial.metallic = p["METALLIC"];
-            newMaterial.roughness = p["ROUGHNESS"];
-            newMaterial.transmission = p["TRANSMISSIVE"];
-        }
-        MatNameToID[name] = materials.size();
-        materials.emplace_back(newMaterial);
     }
-    const auto& objectsData = data["Objects"];
-    for (const auto& p : objectsData)
-    {
-        const auto& type = p["TYPE"];
-        Geom newGeom;
-        if (type == "cube")
+    if (data.contains("Objects")) {
+        const auto& objectsData = data["Objects"];
+        for (const auto& p : objectsData)
         {
-            newGeom.type = CUBE;
-        }
-        else
-        {
-            newGeom.type = SPHERE;
-        }
-        newGeom.materialid = MatNameToID[p["MATERIAL"]];
-        newGeom.materialType = materials.at(newGeom.materialid).type;
-        const auto& trans = p["TRANS"];
-        const auto& rotat = p["ROTAT"];
-        const auto& scale = p["SCALE"];
-        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
-        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
-        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
-        newGeom.transform = utilityCore::buildTransformationMatrix(
-            newGeom.translation, newGeom.rotation, newGeom.scale);
-        newGeom.inverseTransform = glm::inverse(newGeom.transform);
-        newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+            const auto& type = p["TYPE"];
+            Geom newGeom;
+            if (type == "cube")
+            {
+                newGeom.type = CUBE;
+            }
+            else
+            {
+                newGeom.type = SPHERE;
+            }
+            newGeom.materialid = MatNameToID[p["MATERIAL"]];
+            newGeom.materialType = materials.at(newGeom.materialid).type;
+            const auto& trans = p["TRANS"];
+            const auto& rotat = p["ROTAT"];
+            const auto& scale = p["SCALE"];
+            newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
+            newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
+            newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
+            newGeom.transform = utilityCore::buildTransformationMatrix(
+                newGeom.translation, newGeom.rotation, newGeom.scale);
+            newGeom.inverseTransform = glm::inverse(newGeom.transform);
+            newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
 
-        geoms.push_back(newGeom);
+            geoms.push_back(newGeom);
+        }
     }
 
+    if (data.contains("Imports")) {
+        for (const auto& imp : data["Imports"]) {
+            std::string rel = imp["PATH"].get<std::string>();
+            fs::path path = resolvePathRelativeTo(jsonName, rel);
+
+            HostGLTFScene gltf;
+            std::string err;
+            if (!LoadGltfFile(path.string(), gltf, &err)) {
+                std::cerr << "gltf load failed: " << err << std::endl;
+            }
+
+            glm::mat4 root = glm::mat4(1.f);
+            const auto& t = imp["TRANS"];
+            const auto& r = imp["ROTAT"];
+            const auto& s = imp["SCALE"];
+            glm::vec3 translation = glm::vec3(t[0], t[1], t[2]);
+            glm::vec3 rotation = glm::vec3(r[0], r[1], r[2]);
+            glm::vec3 scale = glm::vec3(s[0], s[1], s[2]);
+            glm::mat4 transform = utilityCore::buildTransformationMatrix(translation, rotation, scale);
+            ApplyRootTransform(gltf, transform);
+                
+            int meshesSize = meshes.size(); 
+            meshes.insert(meshes.end(), gltf.meshes.begin(), gltf.meshes.end()); 
+            for (HostGLTFInstance& instance : gltf.instances) {
+                instance.meshIndex += meshesSize;
+                instances.push_back(instance); 
+            }
+        }
+    }
+ 
     // load environment map 
-    const auto& envMapData = data["EnvironmentMap"]; 
-    std::string envRel = envMapData["Path"].get<std::string>();
+    if (data.contains("EnvironmentMap")) {
+        const auto& envMapData = data["EnvironmentMap"];
+        std::string envRel = envMapData["Path"].get<std::string>();
 
-    fs::path envPath = resolvePathRelativeTo(jsonName, envRel);
-    if (!fs::exists(envPath)) {
-        throw std::runtime_error("EnvironmentMap not found at: " + envPath.string());
+        fs::path envPath = resolvePathRelativeTo(jsonName, envRel);
+        if (!fs::exists(envPath)) {
+            throw std::runtime_error("EnvironmentMap not found at: " + envPath.string());
+        }
+
+        cpt::TextureDesc hdrEnvDesc;
+        hdrEnvDesc.pixelFormat = cpt::PixelFormat::RGBA32F;
+        hdrEnvDesc.colorSpace = cpt::ColorSpace::Linear;
+        hdrEnvDesc.sampler.addressU = cudaAddressModeWrap;
+        hdrEnvDesc.sampler.addressV = cudaAddressModeClamp;
+        hdrEnvDesc.sampler.filter = cudaFilterModeLinear;
+        hdrEnvDesc.sampler.normalizedCoords = true;
+        hdrEnvDesc.sampler.readMode = cudaReadModeElementType;
+        cpt::createTextureFromFile(envMap, envPath, hdrEnvDesc);
     }
-
-    cpt::TextureDesc hdrEnvDesc;
-    hdrEnvDesc.pixelFormat = cpt::PixelFormat::RGBA32F;
-    hdrEnvDesc.colorSpace = cpt::ColorSpace::Linear;
-    hdrEnvDesc.sampler.addressU = cudaAddressModeWrap;
-    hdrEnvDesc.sampler.addressV = cudaAddressModeClamp;
-    hdrEnvDesc.sampler.filter = cudaFilterModeLinear;
-    hdrEnvDesc.sampler.normalizedCoords = true;
-    hdrEnvDesc.sampler.readMode = cudaReadModeElementType;
-    cpt::createTextureFromFile(envMap, envPath, hdrEnvDesc); 
 
     // load camera settings
     const auto& cameraData = data["Camera"];

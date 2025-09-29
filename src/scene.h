@@ -1,7 +1,8 @@
 #pragma once
 
+#include "gltf_loader.h"
 #include "sceneStructs.h"
-#include "texture.h"
+#include "texture.h"\
 #include <vector>
 
 class Scene
@@ -14,6 +15,8 @@ public:
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     std::vector<cpt::Texture2D> textures; // excluding environemnt map
+    std::vector<HostGLTFMesh> meshes;
+    std::vector<HostGLTFInstance> instances;
     cpt::Texture2D envMap; 
     RenderState state;
 };
