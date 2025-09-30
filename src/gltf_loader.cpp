@@ -1,13 +1,16 @@
-#include "gltf_loader.h"
+#include <cfloat>
+#include <cmath>
+#include <cuda_runtime.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tiny_gltf.h"
 
-#include <cfloat>
-#include <cmath>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/quaternion.hpp>
+#include "gltf_loader.h"
+#include "utilities.h"
+
 
 // internal helpers
 namespace {
@@ -94,14 +97,112 @@ bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string*
     return true;
 }
 
-bool UploadGltfData(
+void UploadGltfData(
     const std::vector<HostGltfInstance>&        hostInstances, 
     const std::vector<HostGltfMesh>&            hostMeshes, 
-    DeviceInstance*                             outDeviceIsntances, 
+    DeviceInstance*                             outDeviceInstances, 
     DeviceMesh*                                 outDeviceMeshes, 
     std::vector<void*>&                         outGltfAllocs)
 {
-    return false;
+    const size_t nInst = hostInstances.size();
+    const size_t nMesh = hostMeshes.size();
+
+    // allocate top-level arrays (not tracked in outGltfAllocs)
+    checkCUDAError("UploadGltfData Start; Seek errors before here");
+    cudaMalloc((void**)&outDeviceInstances, sizeof(DeviceInstance) * nInst);
+    checkCUDAError("cudaMalloc outDeviceInstances");
+    cudaMalloc((void**)&outDeviceMeshes, sizeof(DeviceMesh) * nMesh);
+    checkCUDAError("cudaMalloc outDeviceMeshes");
+
+    // upload instances
+    for (size_t i = 0; i < nInst; ++i) {
+        DeviceInstance di{};
+        di.meshIndex = hostInstances[i].meshIndex;
+        di.world = hostInstances[i].world;
+        cudaMemcpy(outDeviceInstances + i, &di, sizeof(DeviceInstance), cudaMemcpyHostToDevice);
+        checkCUDAError("cudaMemcpy device instance");
+    }
+
+    // per-mesh primitives
+    for (size_t mi = 0; mi < nMesh; ++mi) {
+        const auto& hmesh = hostMeshes[mi];
+        const int nprim = static_cast<int>(hmesh.primitives.size());
+
+        DevicePrimitive* dprims = nullptr;
+        if (nprim > 0) {
+            cudaMalloc((void**)&dprims, sizeof(DevicePrimitive) * nprim);
+            checkCUDAError("cudaMalloc device primitives array");
+            outGltfAllocs.push_back(dprims);
+        }
+
+        DeviceMesh dmesh{};
+        dmesh.primitives = dprims;
+        dmesh.numPrimitives = nprim;
+
+        cudaMemcpy(outDeviceMeshes + mi, &dmesh, sizeof(DeviceMesh), cudaMemcpyHostToDevice);
+        checkCUDAError("cudaMemcpy device mesh header");
+
+        // per-primitive attribute buffers
+        for (int pi = 0; pi < nprim; ++pi) {
+            const auto& hp = hmesh.primitives[pi];
+
+            DevicePrimitive dp{};
+            dp.positions = nullptr;
+            dp.normals = nullptr;
+            dp.indices = nullptr;
+            dp.numVertices = static_cast<int>(hp.positions.size());
+            dp.numIndices = static_cast<int>(hp.indices.size());
+            dp.materialIndex = hp.materialIndex;
+            dp.aabbMin = hp.aabbMin;
+            dp.aabbMax = hp.aabbMax;
+
+            // positions (required)
+            if (dp.numVertices == 0) {
+                // positions required; write empty dp and continue to avoid crash
+                cudaMemcpy(dprims + pi, &dp, sizeof(DevicePrimitive), cudaMemcpyHostToDevice);
+                checkCUDAError("cudaMemcpy empty primitive");
+                continue;
+            }
+            {
+                glm::vec3* dpos = nullptr;
+                size_t bytes = sizeof(glm::vec3) * hp.positions.size();
+                cudaMalloc((void**)&dpos, bytes);
+                checkCUDAError("cudaMalloc positions");
+                outGltfAllocs.push_back(dpos);
+                cudaMemcpy(dpos, hp.positions.data(), bytes, cudaMemcpyHostToDevice);
+                checkCUDAError("cudaMemcpy positions");
+                dp.positions = dpos;
+            }
+
+            // normals (optional)
+            if (!hp.normals.empty()) {
+                glm::vec3* dnor = nullptr;
+                size_t bytes = sizeof(glm::vec3) * hp.normals.size();
+                cudaMalloc((void**)&dnor, bytes);
+                checkCUDAError("cudaMalloc normals");
+                outGltfAllocs.push_back(dnor);
+                cudaMemcpy(dnor, hp.normals.data(), bytes, cudaMemcpyHostToDevice);
+                checkCUDAError("cudaMemcpy normals");
+                dp.normals = dnor;
+            }
+
+            // indices (optional)
+            if (!hp.indices.empty()) {
+                uint32_t* didx = nullptr;
+                size_t bytes = sizeof(uint32_t) * hp.indices.size();
+                cudaMalloc((void**)&didx, bytes);
+                checkCUDAError("cudaMalloc indices");
+                outGltfAllocs.push_back(didx);
+                cudaMemcpy(didx, hp.indices.data(), bytes, cudaMemcpyHostToDevice);
+                checkCUDAError("cudaMemcpy indices");
+                dp.indices = didx;
+            }
+
+            // write primitive header
+            cudaMemcpy(dprims + pi, &dp, sizeof(DevicePrimitive), cudaMemcpyHostToDevice);
+            checkCUDAError("cudaMemcpy primitive header");
+        }
+    }
 }
 
 void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root)

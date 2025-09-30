@@ -74,10 +74,10 @@ struct DeviceGltfScene {
 bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string* err = nullptr);
 
 // Sends host-side data to device 
-bool UploadGltfData(
+void UploadGltfData(
     const std::vector<HostGltfInstance>&    hostInstances,
     const std::vector<HostGltfMesh>&        hostMeshes,
-    DeviceInstance*                         outDeviceIsntances,
+    DeviceInstance*                         outDeviceInstances,
     DeviceMesh*                             outDeviceMeshes,
     std::vector<void*>&                     outGltfAllocs); // gltf resources owned by DeviceMesh 
                                                             // objects used to simplify cleaning later
