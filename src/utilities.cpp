@@ -164,3 +164,13 @@ void utilityCore::checkCUDAErrorFn(const char* msg, const char* file, int line)
     exit(EXIT_FAILURE);
 #endif // ERRORCHECK
 }
+
+void utilityCore::CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes)
+{
+    if (bytes == 0) { *dptr = nullptr; return; }
+    cudaMalloc(dptr, bytes); 
+    if (hsrc && bytes) {
+        cudaMemcpy(*dptr, hsrc, bytes, cudaMemcpyHostToDevice); 
+    }
+    return;
+}

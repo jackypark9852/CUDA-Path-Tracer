@@ -4,6 +4,7 @@
 #include <cuda.h>
 #include <cmath>
 #include "device_launch_parameters.h"
+#include "gltf_loader.h"
 #include "utilities.h"
 #include "intersections.h"
 #include "interactions.h"
@@ -55,6 +56,11 @@ static int* dev_endIdx = NULL;
 static int* hst_startIdx = NULL; 
 static int* hst_endIdx = NULL;
 
+// device buffer for gltf mesh data 
+static DeviceInstance* dev_instances; 
+static DeviceMesh* dev_meshes; 
+std::vector<void*> gltfAllocs; 
+
 struct is_active {
     __host__ __device__
         bool operator()(const PathSegment& seg) {
@@ -96,6 +102,9 @@ void pathtraceInit(Scene* scene)
     hst_endIdx = new int[static_cast<int>(MaterialType::COUNT)];
 
     envMap = &(scene->envMap); 
+
+    // send gltf data from scene to device
+    UploadGltfData(scene->instances, scene->meshes, dev_instances, dev_meshes, gltfAllocs);
 }
 
 void pathtraceFree()
@@ -108,6 +117,14 @@ void pathtraceFree()
 
     cudaFree(dev_startIdx); 
     cudaFree(dev_endIdx); 
+
+    // free resources owned by gltf meshes (dev_meshes)
+    for (void* gltfAllocs : gltfAllocs) {
+        cudaFree(gltfAllocs); 
+    }
+
+    cudaFree(dev_meshes);   
+    cudaFree(dev_instances); 
 
     delete[] hst_startIdx; 
     delete[] hst_endIdx; 

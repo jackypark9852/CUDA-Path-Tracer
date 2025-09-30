@@ -29,13 +29,15 @@ namespace {
         std::vector<glm::mat4>& worldPerNode);
 
     // create HostGLTFMesh from a gltf mesh
-    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGLTFMesh& dst, std::string* err);
+    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGltfMesh& dst, std::string* err);
+
+
 
 } // namespace
 
 // public api
 
-bool LoadGltfFile(const std::string& path, HostGLTFScene& outScene, std::string* err)
+bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string* err)
 {
     // parse gltf/glb
     tinygltf::Model model;
@@ -61,7 +63,7 @@ bool LoadGltfFile(const std::string& path, HostGLTFScene& outScene, std::string*
     outScene.meshes.reserve(model.meshes.size());
 
     for (const auto& m : model.meshes) {
-        HostGLTFMesh dst;
+        HostGltfMesh dst;
         if (!ConvertMesh(model, m, dst, err)) {
             // skip invalid meshes but continue
             continue;
@@ -82,7 +84,7 @@ bool LoadGltfFile(const std::string& path, HostGLTFScene& outScene, std::string*
         const auto& n = model.nodes[ni];
         if (n.mesh < 0) continue;
         if (n.mesh >= (int)outScene.meshes.size()) continue; // guard
-        HostGLTFInstance inst;
+        HostGltfInstance inst;
         inst.meshIndex = n.mesh;
         inst.world = worldPerNode[ni];
         inst.nodeIndex = (int)ni;
@@ -92,7 +94,17 @@ bool LoadGltfFile(const std::string& path, HostGLTFScene& outScene, std::string*
     return true;
 }
 
-void ApplyRootTransform(HostGLTFScene& scene, const glm::mat4& root)
+bool UploadGltfData(
+    const std::vector<HostGltfInstance>&        hostInstances, 
+    const std::vector<HostGltfMesh>&            hostMeshes, 
+    DeviceInstance*                             outDeviceIsntances, 
+    DeviceMesh*                                 outDeviceMeshes, 
+    std::vector<void*>&                         outGltfAllocs)
+{
+    return false;
+}
+
+void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root)
 {
     for (auto& inst : scene.instances) {
         inst.world = root * inst.world;
@@ -209,7 +221,7 @@ namespace {
         }
     }
 
-    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGLTFMesh& dst, std::string* err)
+    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGltfMesh& dst, std::string* err)
     {
         dst.name = src.name;
         dst.primitives.clear();
@@ -223,7 +235,7 @@ namespace {
                 continue;
             }
 
-            HostGLTFPrimitive hp;
+            HostGltfPrimitive hp;
 
             // positions (required)
             auto itPos = prim.attributes.find("POSITION");

@@ -132,7 +132,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             std::string rel = imp["PATH"].get<std::string>();
             fs::path path = resolvePathRelativeTo(jsonName, rel);
 
-            HostGLTFScene gltf;
+            HostGltfScene gltf;
             std::string err;
             if (!LoadGltfFile(path.string(), gltf, &err)) {
                 std::cerr << "gltf load failed: " << err << std::endl;
@@ -150,7 +150,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 
             int meshesSize = meshes.size(); 
             meshes.insert(meshes.end(), gltf.meshes.begin(), gltf.meshes.end()); 
-            for (HostGLTFInstance& instance : gltf.instances) {
+            for (HostGltfInstance& instance : gltf.instances) {
                 instance.meshIndex += meshesSize;
                 instances.push_back(instance); 
             }

@@ -47,4 +47,5 @@ namespace utilityCore
     extern std::string convertIntToString(int number);
     extern std::istream& safeGetline(std::istream& is, std::string& t); //Thanks to http://stackoverflow.com/a/6089413
     extern void checkCUDAErrorFn(const char* msg, const char* file, int line); 
+    extern void CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes); 
 }

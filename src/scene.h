@@ -15,8 +15,8 @@ public:
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     std::vector<cpt::Texture2D> textures; // excluding environemnt map
-    std::vector<HostGLTFMesh> meshes;
-    std::vector<HostGLTFInstance> instances;
+    std::vector<HostGltfMesh> meshes;
+    std::vector<HostGltfInstance> instances;
     cpt::Texture2D envMap; 
     RenderState state;
 };
