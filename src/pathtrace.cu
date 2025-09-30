@@ -163,11 +163,22 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
-// TODO:
-// computeIntersections handles generating ray intersections ONLY.
-// Generating new rays is handled in your shader(s).
-// Feel free to modify the code below.
-__global__ void computeIntersections(
+__device__ inline glm::vec3 XformPoint(const glm::mat4& m, const glm::vec3& p) {
+    glm::vec4 r = m * glm::vec4(p, 1.f);
+    return glm::vec3(r) / r.w;
+}
+
+__device__ inline glm::vec3 XformVector(const glm::mat4& m, const glm::vec3& v) {
+    return glm::vec3(m * glm::vec4(v, 0.f));
+}
+
+__device__ inline glm::vec3 InterpNormal(const glm::vec3* nrm, int i0, int i1, int i2, float u, float v) {
+    glm::vec3 n0 = nrm[i0], n1 = nrm[i1], n2 = nrm[i2];
+    float w = 1.f - u - v;
+    return glm::normalize(w * n0 + u * n1 + v * n2);
+}
+
+__global__ void ComputeIntersections(
     int depth,
     int numPaths,
     PathSegment* pathSegments,
@@ -177,65 +188,126 @@ __global__ void computeIntersections(
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (path_index >= numPaths) return;
 
-    if (path_index < numPaths)
+    PathSegment& seg = pathSegments[path_index];
+
+    bool hitSomething = false;
+    float tMin = FLT_MAX;
+    glm::vec3 nMin(0.f);
+    int hitGeomIdx = -1;
+    int hitMeshIdx = -1;
+    int hitPrimIdx = -1;
+
     {
-        PathSegment& pathSegment = pathSegments[path_index];
-
         float t;
-        glm::vec3 intersect_point;
-        glm::vec3 normal;
-        float t_min = FLT_MAX;
-        int hit_geom_index = -1;
-        bool outside = true;
+        glm::vec3 tmpI, tmpN;
+        bool outside;
+        for (int i = 0; i < geomsSize; ++i) {
+            Geom& g = geoms[i];
+            if (g.type == CUBE)        t = boxIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
+            else if (g.type == SPHERE) t = sphereIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
+            else                       t = -1.f;
 
-        glm::vec3 tmp_intersect;
-        glm::vec3 tmp_normal;
-
-        // naive parse through global geoms
-
-        for (int i = 0; i < geomsSize; i++)
-        {
-            Geom& geom = geoms[i];
-
-            if (geom.type == CUBE)
-            {
-                t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+            if (t > 0.f && t < tMin) {
+                hitSomething = true;
+                tMin = t;
+                nMin = tmpN;
+                hitGeomIdx = i;
+                hitMeshIdx = -1;
+                hitPrimIdx = -1;
             }
-            else if (geom.type == SPHERE)
-            {
-                t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
-            }
-            // TODO: add more intersection tests here... triangle? metaball? CSG?
-
-            // Compute the minimum t from the intersection tests to determine what
-            // scene geometry object was hit first.
-            if (t > 0.0f && t_min > t)
-            {
-                t_min = t;
-                hit_geom_index = i;
-                intersect_point = tmp_intersect;
-                normal = tmp_normal;
-            }
-        }
-
-        if (hit_geom_index == -1)
-        {
-            intersections[path_index].t = -1.0f; // just some value so that material sorting does 
-            intersections[path_index].materialType = MaterialType::ENVMAP; 
-        }
-        else
-        {
-            // The ray hits something
-            intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
-            intersections[path_index].materialType = geoms[hit_geom_index].materialType; 
-            intersections[path_index].surfaceNormal = normal;
         }
     }
+
+    for (int ii = 0; ii < deviceGltfScene.numInstances; ++ii) {
+        const DeviceInstance inst = deviceGltfScene.instances[ii];
+        if (inst.meshIndex < 0 || inst.meshIndex >= deviceGltfScene.numMeshes) continue;
+
+        const DeviceMesh dmesh = deviceGltfScene.meshes[inst.meshIndex];
+        if (dmesh.numPrimitives <= 0) continue;
+
+        const glm::mat4 M = inst.world;
+        const glm::mat4 Mi = glm::inverse(M);
+        const glm::mat4 Nmt = glm::transpose(Mi);
+
+        const glm::vec3 ro_os = XformPoint(Mi, seg.ray.origin);
+        const glm::vec3 rd_os = glm::normalize(XformVector(Mi, seg.ray.direction));
+
+        for (int pi = 0; pi < dmesh.numPrimitives; ++pi) {
+            const DevicePrimitive dp = dmesh.primitives[pi];
+            if (dp.numVertices <= 0) continue;
+
+            const bool indexed = (dp.indices != nullptr) && (dp.numIndices >= 3);
+            const int triCount = indexed ? (dp.numIndices / 3) : (dp.numVertices / 3);
+
+            for (int ti = 0; ti < triCount; ++ti) {
+                int i0, i1, i2;
+                if (indexed) {
+                    int b = ti * 3;
+                    i0 = dp.indices[b + 0];
+                    i1 = dp.indices[b + 1];
+                    i2 = dp.indices[b + 2];
+                }
+                else {
+                    int b = ti * 3;
+                    i0 = b + 0; i1 = b + 1; i2 = b + 2;
+                }
+
+                glm::vec3 v0 = dp.positions[i0];
+                glm::vec3 v1 = dp.positions[i1];
+                glm::vec3 v2 = dp.positions[i2];
+
+                float t;
+                glm::vec3 bary;
+                if (!RayTriangleIntersect(v0, v1, v2, ro_os, rd_os, t, bary)) continue;
+
+                glm::vec3 p_os = ro_os + t * rd_os;
+                glm::vec3 p_ws = XformPoint(M, p_os);
+                float tWorld = glm::length(p_ws - seg.ray.origin);
+                if (tWorld >= tMin) continue;
+
+                float u = bary.y;
+                float v = bary.z;
+
+                glm::vec3 n_os = dp.normals ? InterpNormal(dp.normals, i0, i1, i2, u, v)
+                    : glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                glm::vec3 n_ws = glm::normalize(XformVector(Nmt, n_os));
+                if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
+
+                hitSomething = true;
+                tMin = tWorld;
+                nMin = n_ws;
+                hitGeomIdx = -1;
+                hitMeshIdx = inst.meshIndex;
+                hitPrimIdx = pi;
+            }
+        }
+    }
+
+    if (!hitSomething) {
+        intersections[path_index].t = -1.f;
+        intersections[path_index].materialType = MaterialType::ENVMAP;
+        return;
+    }
+
+    if (hitGeomIdx != -1) {
+        intersections[path_index].t = tMin;
+        intersections[path_index].materialId = geoms[hitGeomIdx].materialid;
+        intersections[path_index].materialType = geoms[hitGeomIdx].materialType;
+        intersections[path_index].surfaceNormal = nMin;
+        return;
+    }
+
+    if (hitMeshIdx != -1) {
+        intersections[path_index].t = tMin;
+        intersections[path_index].materialId =
+            deviceGltfScene.meshes[hitMeshIdx].primitives[hitPrimIdx].materialIndex;
+        intersections[path_index].materialType = MaterialType::PBR;
+        intersections[path_index].surfaceNormal = nMin;
+        return;
+    }
 }
-
-
 
 // comparator for material sorting
 struct IsectKeyLess {
@@ -405,7 +477,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         // tracing
         dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
-        computeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (
+        ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (
             depth,
             numPaths,
             dev_paths,

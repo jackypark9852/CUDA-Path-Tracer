@@ -1,4 +1,13 @@
 {
+  "Materials":
+  {
+    "diffuse_white":
+    {
+      "TYPE":"Diffuse",
+      "RGB":[0.98, 0.98, 0.98]
+    }
+  },
+
   "Camera": {
     "RES": [800, 800],
     "FOVY": 30.0,

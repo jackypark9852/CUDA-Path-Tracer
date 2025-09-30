@@ -71,3 +71,10 @@ __host__ __device__ float sphereIntersectionTest(
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
     bool& outside);
+
+__host__ __device__ bool RayTriangleIntersect(
+    glm::vec3 p0, glm::vec3 p1, glm::vec3 p2,
+    glm::vec3 rayOrigin, glm::vec3 rayDirection,
+    float& outDist, glm::vec3& outBary);
+
+__host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3); 

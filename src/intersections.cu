@@ -1,4 +1,5 @@
 #include "intersections.h"
+#include "utilities.h"
 
 __host__ __device__ float boxIntersectionTest(
     Geom box,
@@ -111,3 +112,63 @@ __host__ __device__ float sphereIntersectionTest(
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+
+// From CIS561
+// Moller Trumbore intersection
+__host__ __device__ bool RayTriangleIntersect(
+    glm::vec3 p0, glm::vec3 p1, glm::vec3 p2,
+    glm::vec3 rayOrigin, glm::vec3 rayDirection,
+    float& outDist, glm::vec3& outBary) 
+{
+    glm::vec3 edge1, edge2, h, s, q;
+    float a, f, u, v;
+    edge1 = p1 - p0;
+    edge2 = p2 - p0;
+    h = cross(rayDirection, edge2);
+    a = dot(edge1, h);
+    if (a > -EPSILON && a < EPSILON) {
+        return false;
+    }
+    f = 1.0 / a;
+    s = rayOrigin - p0;
+    u = f * dot(s, h);
+    if (u < 0.0 || u > 1.0)
+        return false;
+    q = cross(s, edge1);
+    v = f * dot(rayDirection, q);
+    if (v < 0.0 || u + v > 1.0) {
+        return false;
+    }
+
+    float t = f * dot(edge2, q);
+    if (t > EPSILON) {
+        outDist = t; 
+        glm::vec3 intersectionPoint = rayOrigin + rayDirection * t; 
+        outBary = Barycentric(intersectionPoint, p0, p1, p2); 
+        return true;
+    }
+    else
+        return false;
+}
+
+__host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3) {
+    glm::vec3 edge1 = t2 - t1;
+    glm:: vec3 edge2 = t3 - t2;
+    float S = length(cross(edge1, edge2));
+
+    edge1 = p - t2;
+    edge2 = p - t3;
+    float S1 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t3;
+    float S2 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t2;
+    float S3 = length(cross(edge1, edge2));
+
+    return glm::vec3(S1 / S, S2 / S, S3 / S);
+}
+
