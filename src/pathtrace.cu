@@ -57,9 +57,7 @@ static int* hst_startIdx = NULL;
 static int* hst_endIdx = NULL;
 
 // device buffer for gltf mesh data 
-static DeviceInstance* dev_instances; 
-static DeviceMesh* dev_meshes; 
-std::vector<void*> gltfAllocs; 
+DeviceGltfScene gltfScene; 
 
 struct is_active {
     __host__ __device__
@@ -104,7 +102,7 @@ void pathtraceInit(Scene* scene)
     envMap = &(scene->envMap); 
 
     // send gltf data from scene to device
-    UploadGltfData(scene->instances, scene->meshes, dev_instances, dev_meshes, gltfAllocs);
+    gltfScene = UploadGltfData(scene->instances, scene->meshes);
 }
 
 void pathtraceFree()
@@ -118,13 +116,7 @@ void pathtraceFree()
     cudaFree(dev_startIdx); 
     cudaFree(dev_endIdx); 
 
-    // free resources owned by gltf meshes (dev_meshes)
-    for (void* gltfAllocs : gltfAllocs) {
-        cudaFree(gltfAllocs); 
-    }
-
-    cudaFree(dev_meshes);   
-    cudaFree(dev_instances); 
+    FreeDeviceGltfScene(gltfScene); 
 
     delete[] hst_startIdx; 
     delete[] hst_endIdx; 
@@ -181,6 +173,7 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geomsSize,
+    DeviceGltfScene deviceGltfScene,
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -418,6 +411,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
+            gltfScene,
             dev_intersections
         );
         checkCUDAError("trace one bounce");

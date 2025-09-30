@@ -74,13 +74,11 @@ struct DeviceGltfScene {
 bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string* err = nullptr);
 
 // Sends host-side data to device 
-void UploadGltfData(
+DeviceGltfScene UploadGltfData(
     const std::vector<HostGltfInstance>&    hostInstances,
-    const std::vector<HostGltfMesh>&        hostMeshes,
-    DeviceInstance*                         outDeviceInstances,
-    DeviceMesh*                             outDeviceMeshes,
-    std::vector<void*>&                     outGltfAllocs); // gltf resources owned by DeviceMesh 
-                                                            // objects used to simplify cleaning later
+    const std::vector<HostGltfMesh>&        hostMeshes);
+
+void FreeDeviceGltfScene(DeviceGltfScene gltfScene); 
 
 // utility: apply an extra root transform to all instances
 void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root);

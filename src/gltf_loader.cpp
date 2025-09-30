@@ -97,21 +97,22 @@ bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string*
     return true;
 }
 
-void UploadGltfData(
+DeviceGltfScene UploadGltfData(
     const std::vector<HostGltfInstance>&        hostInstances, 
-    const std::vector<HostGltfMesh>&            hostMeshes, 
-    DeviceInstance*                             outDeviceInstances, 
-    DeviceMesh*                                 outDeviceMeshes, 
-    std::vector<void*>&                         outGltfAllocs)
+    const std::vector<HostGltfMesh>&            hostMeshes)
 {
     const size_t nInst = hostInstances.size();
     const size_t nMesh = hostMeshes.size();
 
+    DeviceGltfScene ds; 
+    ds.numInstances = nInst; 
+    ds.numMeshes = nMesh; 
+
     // allocate top-level arrays (not tracked in outGltfAllocs)
     checkCUDAError("UploadGltfData Start; Seek errors before here");
-    cudaMalloc((void**)&outDeviceInstances, sizeof(DeviceInstance) * nInst);
+    cudaMalloc((void**)&ds.instances, sizeof(DeviceInstance) * nInst);
     checkCUDAError("cudaMalloc outDeviceInstances");
-    cudaMalloc((void**)&outDeviceMeshes, sizeof(DeviceMesh) * nMesh);
+    cudaMalloc((void**)&ds.meshes, sizeof(DeviceMesh) * nMesh);
     checkCUDAError("cudaMalloc outDeviceMeshes");
 
     // upload instances
@@ -119,7 +120,7 @@ void UploadGltfData(
         DeviceInstance di{};
         di.meshIndex = hostInstances[i].meshIndex;
         di.world = hostInstances[i].world;
-        cudaMemcpy(outDeviceInstances + i, &di, sizeof(DeviceInstance), cudaMemcpyHostToDevice);
+        cudaMemcpy(ds.instances + i, &di, sizeof(DeviceInstance), cudaMemcpyHostToDevice);
         checkCUDAError("cudaMemcpy device instance");
     }
 
@@ -132,14 +133,14 @@ void UploadGltfData(
         if (nprim > 0) {
             cudaMalloc((void**)&dprims, sizeof(DevicePrimitive) * nprim);
             checkCUDAError("cudaMalloc device primitives array");
-            outGltfAllocs.push_back(dprims);
+            ds.ownedPrimArrays.push_back(dprims);
         }
 
         DeviceMesh dmesh{};
         dmesh.primitives = dprims;
         dmesh.numPrimitives = nprim;
 
-        cudaMemcpy(outDeviceMeshes + mi, &dmesh, sizeof(DeviceMesh), cudaMemcpyHostToDevice);
+        cudaMemcpy(ds.meshes + mi, &dmesh, sizeof(DeviceMesh), cudaMemcpyHostToDevice);
         checkCUDAError("cudaMemcpy device mesh header");
 
         // per-primitive attribute buffers
@@ -168,7 +169,7 @@ void UploadGltfData(
                 size_t bytes = sizeof(glm::vec3) * hp.positions.size();
                 cudaMalloc((void**)&dpos, bytes);
                 checkCUDAError("cudaMalloc positions");
-                outGltfAllocs.push_back(dpos);
+                ds.ownedVertexBuffers.push_back(dpos);
                 cudaMemcpy(dpos, hp.positions.data(), bytes, cudaMemcpyHostToDevice);
                 checkCUDAError("cudaMemcpy positions");
                 dp.positions = dpos;
@@ -180,7 +181,7 @@ void UploadGltfData(
                 size_t bytes = sizeof(glm::vec3) * hp.normals.size();
                 cudaMalloc((void**)&dnor, bytes);
                 checkCUDAError("cudaMalloc normals");
-                outGltfAllocs.push_back(dnor);
+                ds.ownedVertexBuffers.push_back(dnor);
                 cudaMemcpy(dnor, hp.normals.data(), bytes, cudaMemcpyHostToDevice);
                 checkCUDAError("cudaMemcpy normals");
                 dp.normals = dnor;
@@ -192,7 +193,7 @@ void UploadGltfData(
                 size_t bytes = sizeof(uint32_t) * hp.indices.size();
                 cudaMalloc((void**)&didx, bytes);
                 checkCUDAError("cudaMalloc indices");
-                outGltfAllocs.push_back(didx);
+                ds.ownedVertexBuffers.push_back(didx);
                 cudaMemcpy(didx, hp.indices.data(), bytes, cudaMemcpyHostToDevice);
                 checkCUDAError("cudaMemcpy indices");
                 dp.indices = didx;
@@ -203,6 +204,24 @@ void UploadGltfData(
             checkCUDAError("cudaMemcpy primitive header");
         }
     }
+
+    return ds; 
+}
+
+void FreeDeviceGltfScene(DeviceGltfScene gltfScene)
+{
+    for (void* primArray : gltfScene.ownedPrimArrays) {
+        cudaFree(primArray); 
+        checkCUDAError("FreeGltfScene cudaFree primArray"); 
+    }
+
+    for (void* vertBuffer : gltfScene.ownedVertexBuffers) {
+        cudaFree(vertBuffer); 
+        checkCUDAError("FreeGltfScene cudaFree vertBuffer"); 
+    }
+
+    cudaFree(gltfScene.meshes); 
+    cudaFree(gltfScene.instances); 
 }
 
 void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root)
@@ -212,8 +231,7 @@ void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root)
     }
 }
 
-glm::mat4 ComposeTrs(const glm::vec3& t, const glm::vec3& rRadians, const glm::vec3& s)
-{
+glm::mat4 ComposeTrs(const glm::vec3& t, const glm::vec3& rRadians, const glm::vec3& s) {
     // note: glm uses column-major; order scale*rot*trans typical is translate * rotZ * rotY * rotX * scale
     glm::mat4 T = glm::translate(glm::mat4(1.f), t);
     glm::mat4 Rx = glm::rotate(glm::mat4(1.f), rRadians.x, glm::vec3(1, 0, 0));
