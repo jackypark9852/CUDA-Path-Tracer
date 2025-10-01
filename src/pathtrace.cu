@@ -90,6 +90,9 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
+    cudaMalloc(&dev_textures, scene->textures.size() * sizeof(cpt::Texture2D));
+    cudaMemcpy(dev_textures, scene->textures.data(), scene->textures.size() * sizeof(cpt::Texture2D), cudaMemcpyHostToDevice);
+
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
@@ -111,6 +114,7 @@ void pathtraceFree()
     cudaFree(dev_paths);
     cudaFree(dev_geoms);
     cudaFree(dev_materials);
+    cudaFree(dev_textures); 
     cudaFree(dev_intersections);
 
     cudaFree(dev_startIdx); 
@@ -427,7 +431,7 @@ static void MaterialSortAndShade(
             KernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
             break;
         case MaterialType::PBR:
-            KernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials); 
+            KernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials, dev_textures); 
             break;
         case MaterialType::ENVMAP:
             KernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
@@ -504,6 +508,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
                 dev_intersections,
                 dev_paths,
                 dev_materials, 
+                dev_textures,
                 *envMap
                 );
         }

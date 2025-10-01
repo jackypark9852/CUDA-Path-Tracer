@@ -248,7 +248,8 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
         float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
-
+        
+        //glm::vec3 baseColor = HasBaseColorTex(mat) ? tex2D<float4>(mat->baseColorTex, uv.x, uv.y) : mat->baseColor; 
         glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(mat->baseColor);
 
         sample.incomingDir = wi;                     // world space
@@ -308,11 +309,13 @@ DEVICE_INLINE void ShadePbrImpl(
     int iter, int idx,
     ShadeableIntersection* s,
     PathSegment* p,
-    Material* m)
+    Material* m,
+    cpt::Texture2D* t)
 {
     ShadeableIntersection* isect = s + idx;
     PathSegment* seg = p + idx;
     Material* mat = m + isect->materialId;
+    
     if (seg->shouldTerminate) return;
 
     // early out if miss or exhausted
@@ -422,7 +425,8 @@ __global__ void KernShadePbr(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p,
-    Material* m);
+    Material* m, 
+    cpt::Texture2D* t);
 
 __global__ void KernShadeEnvMap(
     int iter, int n,
@@ -440,4 +444,5 @@ __global__ void KernShadeAllMaterials(
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
+    cpt::Texture2D* t, 
     const cpt::Texture2D envMap);

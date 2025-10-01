@@ -32,9 +32,9 @@ __global__ void KernShadeTransmissive(int iter, int n, ShadeableIntersection* s,
     if (idx < n) ShadeTransmissiveImpl(iter, idx, s, p, m);
 }
 
-__global__ void KernShadePbr(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void KernShadePbr(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D* t) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadePbrImpl(iter, idx, s, p, m);
+    if (idx < n) ShadePbrImpl(iter, idx, s, p, m, t);
 }
 
 // shades environment for rays that missed; terminates the path
@@ -50,7 +50,7 @@ __global__ void KernShadeError(int iter, int n, ShadeableIntersection* s, PathSe
 }
 
 // single-pass kernel that dispatches per-material shading
-__global__ void KernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D envMap) {
+__global__ void KernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D* t, cpt::Texture2D envMap) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
 
@@ -78,7 +78,7 @@ __global__ void KernShadeAllMaterials(int iter, int n, ShadeableIntersection* s,
     case MaterialType::DIFFUSE:       ShadeDiffuseImpl(iter, idx, s, p, m);       break;
     case MaterialType::SPECULAR:      ShadeSpecularImpl(iter, idx, s, p, m);      break;
     case MaterialType::TRANSMISSIVE:  ShadeTransmissiveImpl(iter, idx, s, p, m);  break;
-    case MaterialType::PBR:           ShadePbrImpl(iter, idx, s, p, m);           break;
+    case MaterialType::PBR:           ShadePbrImpl(iter, idx, s, p, m, t);           break;
     default:                          ShadeErrorImpl(iter, idx, s, p);            break;
     }
 }

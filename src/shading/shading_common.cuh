@@ -55,3 +55,19 @@ __device__ __forceinline__ glm::vec3 localToWorld(const glm::vec3& n, const glm:
 __device__ __forceinline__ bool SameHemisphere(glm::vec3 w, glm::vec3 wp) {
     return w.z * wp.z > 0;
 }
+
+__device__ __forceinline__ bool HasBaseColorTex(Material* mat) {
+    return (mat->baseColorTex >= 0); 
+}
+
+__device__ __forceinline__ bool HasNormalTex(Material* mat) {
+    return (mat->normalTex >= 0);
+}
+
+__device__ __forceinline__ bool HasMetallicRoughnessTex(Material* mat) {
+    return (mat->metallicRoughnessTex >= 0);
+}
+
+__device__ __forceinline__ bool HasEmissiveTex(Material* mat) {
+    return (mat->emissiveTex >= 0);
+}
