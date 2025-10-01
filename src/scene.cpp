@@ -1,30 +1,20 @@
 #include "scene.h"
 
-#include "utilities.h"
-
-#include <glm/gtc/matrix_inverse.hpp>
-#include <glm/gtx/string_cast.hpp>
-#include "json.hpp"
-
 #include <fstream>
 #include <filesystem>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtx/string_cast.hpp>
 #include <iostream>
 #include <string>
 #include <unordered_map>
+
+#include "json.hpp"
 #include "texture.h"
+#include "utilities.h"
 
 using namespace std;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
-
-static fs::path resolvePathRelativeTo(const fs::path& baseFile, const std::string& p) {
-    fs::path candidate = fs::path(p);
-    if (!candidate.is_absolute()) {
-        candidate = baseFile.parent_path() / candidate; 
-    }
-    candidate = candidate.lexically_normal();
-    return candidate;
-}
 
 Scene::Scene(string filename)
 {
@@ -118,7 +108,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
             newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
             newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
-            newGeom.transform = utilityCore::buildTransformationMatrix(
+            newGeom.transform = UtilityCore::buildTransformationMatrix(
                 newGeom.translation, newGeom.rotation, newGeom.scale);
             newGeom.inverseTransform = glm::inverse(newGeom.transform);
             newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
@@ -130,11 +120,11 @@ void Scene::loadFromJSON(const std::string& jsonName)
     if (data.contains("Imports")) {
         for (const auto& imp : data["Imports"]) {
             std::string rel = imp["PATH"].get<std::string>();
-            fs::path path = resolvePathRelativeTo(jsonName, rel);
+            fs::path path = UtilityCore::ResolvePathRelativeTo(jsonName, rel);
 
-            HostGltfScene gltf;
+            HostGltfScene gltfScene;
             std::string err;
-            if (!LoadGltfFile(path.string(), gltf, materials, textures, &err)) {
+            if (!LoadGltfFile(path.string(), jsonName, gltfScene, materials, textures, &err)) {
                 std::cerr << "gltf load failed: " << err << std::endl;
             }
 
@@ -145,12 +135,12 @@ void Scene::loadFromJSON(const std::string& jsonName)
             glm::vec3 translation = glm::vec3(t[0], t[1], t[2]);
             glm::vec3 rotation = glm::vec3(r[0], r[1], r[2]);
             glm::vec3 scale = glm::vec3(s[0], s[1], s[2]);
-            glm::mat4 transform = utilityCore::buildTransformationMatrix(translation, rotation, scale);
-            ApplyRootTransform(gltf, transform);
+            glm::mat4 transform = UtilityCore::buildTransformationMatrix(translation, rotation, scale);
+            ApplyRootTransform(gltfScene, transform);
                 
             int meshesSize = meshes.size(); 
-            meshes.insert(meshes.end(), gltf.meshes.begin(), gltf.meshes.end()); 
-            for (HostGltfInstance& instance : gltf.instances) {
+            meshes.insert(meshes.end(), gltfScene.meshes.begin(), gltfScene.meshes.end()); 
+            for (HostGltfInstance& instance : gltfScene.instances) {
                 instance.meshIndex += meshesSize;
                 instances.push_back(instance); 
             }
@@ -162,7 +152,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         const auto& envMapData = data["EnvironmentMap"];
         std::string envRel = envMapData["Path"].get<std::string>();
 
-        fs::path envPath = resolvePathRelativeTo(jsonName, envRel);
+        fs::path envPath = UtilityCore::ResolvePathRelativeTo(jsonName, envRel);
         if (!fs::exists(envPath)) {
             throw std::runtime_error("EnvironmentMap not found at: " + envPath.string());
         }

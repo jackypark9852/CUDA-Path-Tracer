@@ -33,15 +33,17 @@ namespace {
 
     // create HostGLTFMesh from a gltf mesh
     bool ConvertMesh(
-        const tinygltf::Model&          model, 
-        const tinygltf::Mesh&           src, 
-        HostGltfMesh&                   dst, 
-        std::vector<Material>&          mats, 
-        std::vector<cpt::Texture2D>&    texs,
-        std::string*                    err
+        const tinygltf::Model&  model,
+        const tinygltf::Mesh&   src,
+        HostGltfMesh&           dst,
+        int                     matOffset,
+        int                     defaultMatIdx,
+        std::string*            err
     );
 
     enum TexUse : int { UseNone = 0, UseSRGB = 1 << 0, UseLinear = 1 << 1 };
+
+    inline int ChooseUseForTexture(const tinygltf::Model& model, int texIndex);
 
     inline cpt::ColorSpace PickColorSpaceFromUse(int use); 
 
@@ -58,23 +60,23 @@ namespace {
 // public api
 
 bool LoadGltfFile(
-    const std::string&              path, 
+    const std::string&              gltfPath, 
+    const std::string&              scenePath,
     HostGltfScene&                  outScene, 
     std::vector<Material>&          outMaterials, 
     std::vector<cpt::Texture2D>&    outTextures,
     std::string*                    err)
 {
-    // parse gltf/glb
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string warn, error;
 
     bool ok = false;
-    if (path.size() >= 4 && (path.substr(path.size() - 4) == ".glb" || path.substr(path.size() - 4) == ".GLB")) {
-        ok = loader.LoadBinaryFromFile(&model, &error, &warn, path);
+    if (gltfPath.size() >= 4 && (gltfPath.substr(gltfPath.size() - 4) == ".glb" || gltfPath.substr(gltfPath.size() - 4) == ".GLB")) {
+        ok = loader.LoadBinaryFromFile(&model, &error, &warn, gltfPath);
     }
     else {
-        ok = loader.LoadASCIIFromFile(&model, &error, &warn, path);
+        ok = loader.LoadASCIIFromFile(&model, &error, &warn, gltfPath);
     }
     if (!warn.empty() && err) *err += ("gltf warn: " + warn + "\n");
     if (!ok) {
@@ -82,33 +84,88 @@ bool LoadGltfFile(
         return false;
     }
 
-    // convert meshes
+    const int texOffset = (int)outTextures.size();
+    const int matOffset = (int)outMaterials.size();
+
+    // infer texture usage for colorspace
+    std::vector<int> texUse(model.textures.size(), UseNone);
+    for (size_t ti = 0; ti < model.textures.size(); ++ti) {
+        texUse[ti] = ChooseUseForTexture(model, (int)ti);
+    }
+
+    // upload textures in order
+    outTextures.reserve(outTextures.size() + model.textures.size());
+
+    for (size_t ti = 0; ti < model.textures.size(); ++ti) {
+        const auto& gt = model.textures[ti];
+        int srcIdx = gt.source;
+        if (srcIdx < 0 || srcIdx >= (int)model.images.size()) {
+            if (err) *err += "texture missing image source idx " + std::to_string(srcIdx) + "\n";
+            // push a dummy texture so indices stay aligned
+            outTextures.emplace_back();
+            continue;
+        }
+
+        const auto& img = model.images[srcIdx];
+        if (img.uri.empty()) {
+            if (err) *err += "embedded images not supported (bufferView)\n";
+            outTextures.emplace_back();
+            continue;
+        }
+
+        cpt::TextureDesc desc{};
+        desc.pixelFormat = cpt::PixelFormat::RGBA8; // jpg/png path
+        desc.colorSpace = PickColorSpaceFromUse(texUse[ti]);
+        FillDefaultSampler(desc.sampler);
+
+        std::filesystem::path imgPath = UtilityCore::ResolvePathRelativeTo(scenePath, img.uri);
+        cpt::Texture2D tex{};
+        if (!cpt::createTextureFromFile(tex, imgPath, desc, 0)) {
+            if (err) *err += "failed to upload texture: " + imgPath.string() + "\n";
+            outTextures.emplace_back();
+        }
+        else {
+            outTextures.push_back(std::move(tex));
+        }
+    }
+
+    // parse materials
+    outMaterials.reserve(outMaterials.size() + model.materials.size() + 1);
+    for (const auto& gm : model.materials) {
+        Material m = MakeDefaultMaterial();
+        ParseOneMaterial(gm, texOffset, model, m);
+        outMaterials.push_back(m);
+    }
+
+    // default material for missing indices
+    const int defaultMatIdx = (int)outMaterials.size();
+    outMaterials.push_back(MakeDefaultMaterial());
+
+    // meshes
     outScene.meshes.clear();
     outScene.instances.clear();
     outScene.meshes.reserve(model.meshes.size());
 
     for (const auto& m : model.meshes) {
         HostGltfMesh dst;
-        if (!ConvertMesh(model, m, dst, outMaterials, outTextures, err)) {
-            // skip invalid meshes but continue
+        if (!ConvertMesh(model, m, dst, matOffset, defaultMatIdx, err)) {
             continue;
         }
         outScene.meshes.push_back(std::move(dst));
     }
 
-    // compute world transforms for all nodes
+    // world transforms
     std::vector<glm::mat4> worldPerNode(model.nodes.size(), glm::mat4(1.0f));
-    const tinygltf::Scene& scene = (model.scenes.empty() ? tinygltf::Scene() : model.scenes[model.defaultScene > -1 ? model.defaultScene : 0]);
-
-    for (int root : scene.nodes) {
+    const tinygltf::Scene& gscene = (model.scenes.empty() ? tinygltf::Scene() : model.scenes[model.defaultScene > -1 ? model.defaultScene : 0]);
+    for (int root : gscene.nodes) {
         ComputeWorldTransforms(model, root, glm::mat4(1.0f), worldPerNode);
     }
 
-    // collect instances: one per node that references a mesh
+    // instances
     for (size_t ni = 0; ni < model.nodes.size(); ++ni) {
         const auto& n = model.nodes[ni];
         if (n.mesh < 0) continue;
-        if (n.mesh >= (int)outScene.meshes.size()) continue; // guard
+        if (n.mesh >= (int)outScene.meshes.size()) continue;
         HostGltfInstance inst;
         inst.meshIndex = n.mesh;
         inst.world = worldPerNode[ni];
@@ -363,19 +420,18 @@ namespace {
     }
 
     bool ConvertMesh(
-        const tinygltf::Model&          model, 
-        const tinygltf::Mesh&           src, 
-        HostGltfMesh&                   dst, 
-        std::vector<Material>&          mats, 
-        std::vector<cpt::Texture2D>&    texs, 
-        std::string*                    err)
+        const tinygltf::Model&  model, 
+        const tinygltf::Mesh&   src, 
+        HostGltfMesh&           dst, 
+        int                     matOffset,
+        int                     defaultMatIdx,
+        std::string*            err)
     {
         dst.name = src.name;
         dst.primitives.clear();
         dst.primitives.reserve(src.primitives.size());
 
         for (const auto& prim : src.primitives) {
-            // triangles only
             int mode = prim.mode == -1 ? TINYGLTF_MODE_TRIANGLES : prim.mode;
             if (mode != TINYGLTF_MODE_TRIANGLES) {
                 if (err) *err += "skip non-triangles primitive in mesh " + src.name + "\n";
@@ -384,28 +440,23 @@ namespace {
 
             HostGltfPrimitive hp;
 
-            // positions (required)
             auto itPos = prim.attributes.find("POSITION");
             if (itPos == prim.attributes.end()) { if (err) *err += "missing POSITION\n"; continue; }
             if (!ReadAccessorVec3(model, itPos->second, hp.positions)) { if (err) *err += "bad POSITION accessor\n"; continue; }
 
-            // normals (optional)
             auto itNrm = prim.attributes.find("NORMAL");
             if (itNrm != prim.attributes.end()) {
-                ReadAccessorVec3(model, itNrm->second, hp.normals); // ignore failure silently
+                ReadAccessorVec3(model, itNrm->second, hp.normals);
             }
 
-            // indices (optional)
             if (!ReadAccessorIndicesU32(model, prim.indices, hp.indices)) {
                 if (err) *err += "unsupported index type\n";
                 continue;
             }
 
-            // if non-indexed, encourage a later step to generate 0..N-1 or leave empty
             BuildAabb(hp.positions, hp.aabbMin, hp.aabbMax);
 
-            // material index (optional; keep for future)
-            hp.materialIndex = prim.material;
+            hp.materialIndex = (prim.material >= 0) ? (matOffset + prim.material) : defaultMatIdx;
 
             dst.primitives.push_back(std::move(hp));
         }

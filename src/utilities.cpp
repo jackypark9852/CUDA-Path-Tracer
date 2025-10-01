@@ -6,6 +6,7 @@
 
 #include "utilities.h"
 
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
@@ -14,7 +15,7 @@
 
 #define ERRORCHECK 1;
 
-float utilityCore::clamp(float f, float min, float max)
+float UtilityCore::clamp(float f, float min, float max)
 {
     if (f < min)
     {
@@ -30,7 +31,7 @@ float utilityCore::clamp(float f, float min, float max)
     }
 }
 
-bool utilityCore::replaceString(std::string& str, const std::string& from, const std::string& to)
+bool UtilityCore::replaceString(std::string& str, const std::string& from, const std::string& to)
 {
     size_t start_pos = str.find(from);
     if (start_pos == std::string::npos)
@@ -41,14 +42,14 @@ bool utilityCore::replaceString(std::string& str, const std::string& from, const
     return true;
 }
 
-std::string utilityCore::convertIntToString(int number)
+std::string UtilityCore::convertIntToString(int number)
 {
     std::stringstream ss;
     ss << number;
     return ss.str();
 }
 
-glm::vec3 utilityCore::clampRGB(glm::vec3 color)
+glm::vec3 UtilityCore::clampRGB(glm::vec3 color)
 {
     if (color[0] < 0)
     {
@@ -79,12 +80,12 @@ glm::vec3 utilityCore::clampRGB(glm::vec3 color)
     return color;
 }
 
-bool utilityCore::epsilonCheck(float a, float b)
+bool UtilityCore::epsilonCheck(float a, float b)
 {
     return fabs(fabs(a) - fabs(b)) < EPSILON;
 }
 
-glm::mat4 utilityCore::buildTransformationMatrix(glm::vec3 translation, glm::vec3 rotation, glm::vec3 scale)
+glm::mat4 UtilityCore::buildTransformationMatrix(glm::vec3 translation, glm::vec3 rotation, glm::vec3 scale)
 {
     glm::mat4 translationMat = glm::translate(glm::mat4(), translation);
     glm::mat4 rotationMat =   glm::rotate(glm::mat4(), rotation.x * (float) PI / 180, glm::vec3(1, 0, 0));
@@ -94,7 +95,7 @@ glm::mat4 utilityCore::buildTransformationMatrix(glm::vec3 translation, glm::vec
     return translationMat * rotationMat * scaleMat;
 }
 
-std::vector<std::string> utilityCore::tokenizeString(std::string str)
+std::vector<std::string> UtilityCore::tokenizeString(std::string str)
 {
     std::stringstream strstr(str);
     std::istream_iterator<std::string> it(strstr);
@@ -103,7 +104,7 @@ std::vector<std::string> utilityCore::tokenizeString(std::string str)
     return results;
 }
 
-std::istream& utilityCore::safeGetline(std::istream& is, std::string& t)
+std::istream& UtilityCore::safeGetline(std::istream& is, std::string& t)
 {
     t.clear();
 
@@ -142,7 +143,7 @@ std::istream& utilityCore::safeGetline(std::istream& is, std::string& t)
     }
 }
 
-void utilityCore::checkCUDAErrorFn(const char* msg, const char* file, int line)
+void UtilityCore::checkCUDAErrorFn(const char* msg, const char* file, int line)
 {
 #if ERRORCHECK
     cudaDeviceSynchronize();
@@ -165,7 +166,7 @@ void utilityCore::checkCUDAErrorFn(const char* msg, const char* file, int line)
 #endif // ERRORCHECK
 }
 
-void utilityCore::CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes)
+void UtilityCore::CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes)
 {
     if (bytes == 0) { *dptr = nullptr; return; }
     cudaMalloc(dptr, bytes); 
@@ -173,4 +174,13 @@ void utilityCore::CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes)
         cudaMemcpy(*dptr, hsrc, bytes, cudaMemcpyHostToDevice); 
     }
     return;
+}
+
+fs::path UtilityCore::ResolvePathRelativeTo(const fs::path& baseFile, const std::string& p) {
+    fs::path candidate = fs::path(p);
+    if (!candidate.is_absolute()) {
+        candidate = baseFile.parent_path() / candidate;
+    }
+    candidate = candidate.lexically_normal();
+    return candidate;
 }

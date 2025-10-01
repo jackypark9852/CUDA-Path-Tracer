@@ -75,7 +75,8 @@ struct DeviceGltfScene {
 };
 
 bool LoadGltfFile(
-    const std::string&              path,              // relative path to .gltf
+    const std::string&              gltfPath,          // relative path to .gltf
+    const std::string&              scenePath,         // path of the json scene, the working directory
     HostGltfScene&                  outScene,          // host-side data with mesh and instances array
     std::vector<Material>&          outMaterials,      // appends new materials to this array
     std::vector<cpt::Texture2D>&    outTextures,       // appends new textures to this array

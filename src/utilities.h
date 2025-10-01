@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #define PI                3.1415926535897932384626422832795028841971f
 #define TWO_PI            6.2831853071795864769252867665590057683943f
@@ -17,7 +18,7 @@
 #define EPSILON           0.000005f
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define checkCUDAError(msg) utilityCore::checkCUDAErrorFn(msg, FILENAME, __LINE__)
+#define checkCUDAError(msg) UtilityCore::checkCUDAErrorFn(msg, FILENAME, __LINE__)
 
 #ifndef __INTELLISENSE__
 #define KERNEL_ARGS2(grid, block)                 <<< grid, block >>>
@@ -29,6 +30,8 @@
 #define KERNEL_ARGS4(grid, block, sh_mem, stream)
 #endif
 
+namespace fs = std::filesystem;
+
 class GuiDataContainer
 {
 public:
@@ -36,7 +39,7 @@ public:
     int TracedDepth;
 };
 
-namespace utilityCore
+namespace UtilityCore
 {
     extern float clamp(float f, float min, float max);
     extern bool replaceString(std::string& str, const std::string& from, const std::string& to);
@@ -48,4 +51,5 @@ namespace utilityCore
     extern std::istream& safeGetline(std::istream& is, std::string& t); //Thanks to http://stackoverflow.com/a/6089413
     extern void checkCUDAErrorFn(const char* msg, const char* file, int line); 
     extern void CudaMallocCopy(void** dptr, const void* hsrc, size_t bytes); 
+    extern fs::path ResolvePathRelativeTo(const fs::path& baseFile, const std::string& p);
 }
