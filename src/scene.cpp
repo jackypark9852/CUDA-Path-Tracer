@@ -38,6 +38,11 @@ void Scene::loadFromJSON(const std::string& jsonName)
     std::ifstream f(jsonName);
     json data = json::parse(f);
     std::unordered_map<std::string, uint32_t> MatNameToID;
+
+    std::string defaultMaterialName = "Default Material"; 
+    materials.push_back(MakeDefaultMaterial());
+    materialNames.push_back(defaultMaterialName); 
+
     if (data.contains("Materials")) {
         const auto& materialsData = data["Materials"];
         for (const auto& item : materialsData.items())
@@ -82,6 +87,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 newMaterial.roughness = p["ROUGHNESS"];
                 newMaterial.transmission = p["TRANSMISSIVE"];
             }
+            materialNames.push_back(name); 
             MatNameToID[name] = materials.size();
             materials.emplace_back(newMaterial);
         }
@@ -100,6 +106,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             {
                 newGeom.type = SPHERE;
             }
+
             newGeom.materialid = MatNameToID[p["MATERIAL"]];
             newGeom.materialType = materials.at(newGeom.materialid).type;
             const auto& trans = p["TRANS"];
@@ -124,7 +131,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
             HostGltfScene gltfScene;
             std::string err;
-            if (!LoadGltfFile(path.string(), jsonName, gltfScene, materials, textures, &err)) {
+            if (!LoadGltfFile(path.string(), gltfScene, materials, materialNames,textures, &err)) {
                 std::cerr << "gltf load failed: " << err << std::endl;
             }
 
@@ -195,8 +202,6 @@ void Scene::loadFromJSON(const std::string& jsonName)
     camera.right = glm::normalize(glm::cross(camera.view, camera.up));
     camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
         2 * yscaled / (float)camera.resolution.y);
-
-    
 
     //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;

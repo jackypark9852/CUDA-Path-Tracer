@@ -45,25 +45,25 @@ namespace {
 
     inline int ChooseUseForTexture(const tinygltf::Model& model, int texIndex);
 
-    inline cpt::ColorSpace PickColorSpaceFromUse(int use); 
+    inline cpt::ColorSpace PickColorSpaceFromUse(int use);
 
     inline void FillDefaultSampler(cpt::SamplerDesc& s); 
+
+    inline void ConfigureSamplerForFormat(cpt::TextureDesc& d);
 
     inline void ParseOneMaterial(const tinygltf::Material& gm,
         int texOffset,
         const tinygltf::Model& model,
         Material& outM);
-
-    inline Material MakeDefaultMaterial();
 } // namespace
 
 // public api
 
 bool LoadGltfFile(
     const std::string&              gltfPath, 
-    const std::string&              scenePath,
     HostGltfScene&                  outScene, 
     std::vector<Material>&          outMaterials, 
+    std::vector<std::string>&       outMaterialNames,
     std::vector<cpt::Texture2D>&    outTextures,
     std::string*                    err)
 {
@@ -116,9 +116,9 @@ bool LoadGltfFile(
         cpt::TextureDesc desc{};
         desc.pixelFormat = cpt::PixelFormat::RGBA8; // jpg/png path
         desc.colorSpace = PickColorSpaceFromUse(texUse[ti]);
-        FillDefaultSampler(desc.sampler);
+        ConfigureSamplerForFormat(desc); 
 
-        std::filesystem::path imgPath = UtilityCore::ResolvePathRelativeTo(scenePath, img.uri);
+        std::filesystem::path imgPath = UtilityCore::ResolvePathRelativeTo(gltfPath, img.uri);
         cpt::Texture2D tex{};
         if (!cpt::createTextureFromFile(tex, imgPath, desc, 0)) {
             if (err) *err += "failed to upload texture: " + imgPath.string() + "\n";
@@ -135,11 +135,11 @@ bool LoadGltfFile(
         Material m = MakeDefaultMaterial();
         ParseOneMaterial(gm, texOffset, model, m);
         outMaterials.push_back(m);
+        outMaterialNames.push_back(gm.name); 
     }
 
     // default material for missing indices
-    const int defaultMatIdx = (int)outMaterials.size();
-    outMaterials.push_back(MakeDefaultMaterial());
+    const int defaultMatIdx = 0; 
 
     // meshes
     outScene.meshes.clear();
@@ -323,7 +323,6 @@ glm::mat4 ComposeTrs(const glm::vec3& t, const glm::vec3& rRadians, const glm::v
 // === internals ===
 
 namespace {
-
     bool ReadAccessorVec3(const tinygltf::Model& model, int accessorIndex, std::vector<glm::vec3>& dst)
     {
         if (accessorIndex < 0) return false;
@@ -495,6 +494,24 @@ namespace {
         s.readMode = cudaReadModeElementType;
     }
 
+    inline void ConfigureSamplerForFormat(cpt::TextureDesc& d) {
+        FillDefaultSampler(d.sampler); 
+        switch (d.pixelFormat) {
+        case cpt::PixelFormat::RGBA8:      // any unorm/uint8 format
+            d.sampler.readMode = cudaReadModeNormalizedFloat;
+            d.sampler.filter = cudaFilterModeLinear;
+            break;
+        case cpt::PixelFormat::RGBA32F:    // float formats
+            d.sampler.readMode = cudaReadModeElementType;
+            d.sampler.filter = cudaFilterModeLinear;
+            break;
+        default:                           // safe fallback
+            d.sampler.readMode = cudaReadModeNormalizedFloat;
+            d.sampler.filter = cudaFilterModeLinear;
+            break;
+        }
+    }
+
     inline void ParseOneMaterial(const tinygltf::Material& gm,
         int texOffset,
         const tinygltf::Model& model,
@@ -564,25 +581,4 @@ namespace {
             if (val.IsNumber()) outM.transmission = (float)val.Get<double>();
         }
     }
-
-    inline Material MakeDefaultMaterial() {
-        Material m{};
-        m.type = MaterialType::PBR;
-        m.baseColor = glm::vec3(1.f);
-        m.metallic = 1.f;
-        m.roughness = 1.f;
-        m.emissiveColor = glm::vec3(0.f);
-        m.emissiveTex = -1;
-        m.emissiveStrength = 0.f;
-        m.ior = 1.5f;
-        m.transmission = 0.f;
-        m.baseColorTex = -1;
-        m.metallicRoughnessTex = -1;
-        m.normalTex = -1;
-        m.normalScale = 1.f;
-        m.specular.exponent = 0.f;
-        m.specular.color = glm::vec3(1.f);
-        return m;
-    }
-
 } // namespace

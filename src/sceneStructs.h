@@ -46,6 +46,26 @@ struct Material
     } specular; 
 };
 
+inline Material MakeDefaultMaterial() {
+    Material m{};
+    m.type = MaterialType::PBR;
+    m.baseColor = glm::vec3(1.f, 0.f, 1.f);
+    m.metallic = 0.f;
+    m.roughness = 0.f;
+    m.emissiveColor = glm::vec3(0.f);
+    m.emissiveTex = -1;
+    m.emissiveStrength = 0.f;
+    m.ior = 1.5f;
+    m.transmission = 0.f;
+    m.baseColorTex = -1;
+    m.metallicRoughnessTex = -1;
+    m.normalTex = -1;
+    m.normalScale = 1.f;
+    m.specular.exponent = 0.f;
+    m.specular.color = glm::vec3(1.f);
+    return m;
+}
+
 enum GeomType
 {
     SPHERE,

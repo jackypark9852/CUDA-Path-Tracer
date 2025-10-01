@@ -14,6 +14,7 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
+    std::vector<std::string> materialNames;
     std::vector<cpt::Texture2D> textures; // excluding environemnt map
     std::vector<HostGltfMesh> meshes;
     std::vector<HostGltfInstance> instances;
