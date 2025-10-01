@@ -362,7 +362,7 @@ DEVICE_INLINE void ShadePbrImpl(
     --seg->remainingBounces;
 }
 
-// maps a direction on the unit sphere to equirectangular uv
+// maps a direction on the unit sphere to equirectangular uwv
 DEVICE_INLINE glm::vec2 Sphere2MapUvEquirectangular(glm::vec3 p) {
     return glm::vec2(
         atan2(p.x, -p.z) / (2 * PI) + .5f,

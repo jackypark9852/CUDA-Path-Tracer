@@ -16,6 +16,7 @@
 struct HostGltfPrimitive {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> uvs;
     std::vector<uint32_t>  indices;         // 0 if non-indexed
     int materialIndex = -1;
     glm::vec3 aabbMin = glm::vec3(FLT_MAX);
@@ -42,6 +43,7 @@ struct HostGltfScene {
 struct DevicePrimitive {
     const glm::vec3* positions;
     const glm::vec3* normals;           // can be nullptr
+    const glm::vec3* uvs;               // can be nullptr
     const uint32_t* indices;            // can be nullptr (for non-indexed)
     int numVertices;                    // size of positions (and normals if present)
     int numIndices;                     // 3*n for triangles, 0 if non-indexed

@@ -371,6 +371,49 @@ namespace {
         }
     }
 
+    static bool ReadAccessorVec2(const tinygltf::Model& model, int accessorIndex, std::vector<glm::vec2>& dst)
+    {
+        if (accessorIndex < 0) { dst.clear(); return true; }
+        const auto& acc = model.accessors[accessorIndex];
+        if (acc.type != TINYGLTF_TYPE_VEC2) return false;
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+
+        const size_t elemSize = tinygltf::GetComponentSizeInBytes(acc.componentType) * 2;
+        const size_t stride = bv.byteStride ? bv.byteStride : elemSize;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+
+        dst.resize(acc.count);
+
+        switch (acc.componentType) {
+        case TINYGLTF_COMPONENT_TYPE_FLOAT: {
+            for (size_t i = 0; i < acc.count; ++i) {
+                const float* f = reinterpret_cast<const float*>(base + i * stride);
+                dst[i] = glm::vec2(f[0], f[1]);
+            }
+            return true;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+            const float scale = acc.normalized ? (1.0f / 65535.0f) : 1.0f;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const uint16_t* v = reinterpret_cast<const uint16_t*>(base + i * stride);
+                dst[i] = glm::vec2(v[0] * scale, v[1] * scale);
+            }
+            return true;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: {
+            const float scale = acc.normalized ? (1.0f / 255.0f) : 1.0f;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const uint8_t* v = reinterpret_cast<const uint8_t*>(base + i * stride);
+                dst[i] = glm::vec2(v[0] * scale, v[1] * scale);
+            }
+            return true;
+        }
+        default:
+            return false;
+        }
+    }
+
     void BuildAabb(const std::vector<glm::vec3>& pos, glm::vec3& outMin, glm::vec3& outMax)
     {
         glm::vec3 mn(FLT_MAX), mx(-FLT_MAX);
@@ -446,6 +489,13 @@ namespace {
             auto itNrm = prim.attributes.find("NORMAL");
             if (itNrm != prim.attributes.end()) {
                 ReadAccessorVec3(model, itNrm->second, hp.normals);
+            }
+
+            auto itUv0 = prim.attributes.find("TEXCOORD_0");
+            if (itUv0 != prim.attributes.end()) {
+                if (!ReadAccessorVec2(model, itUv0->second, hp.uvs)) {
+                    if (err) *err += "bad TEXCOORD_0 accessor\n";
+                }
             }
 
             if (!ReadAccessorIndicesU32(model, prim.indices, hp.indices)) {

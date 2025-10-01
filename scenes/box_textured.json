@@ -1,0 +1,29 @@
+{
+  "Materials":
+  {
+    "diffuse_white":
+    {
+      "TYPE":"Diffuse",
+      "RGB":[0.98, 0.98, 0.98]
+    }
+  },
+
+  "Camera": {
+    "RES": [800, 800],
+    "FOVY": 30.0,
+    "ITERATIONS": 5000,
+    "DEPTH": 20,
+    "FILE": "box_textured",
+    "EYE": [1.5, 0.0, 30.0],
+    "LOOKAT": [1.5, 0.0, 10.0],
+    "UP": [0.0, 1.0, 0.0]
+  },
+
+  "Imports": [
+    { "PATH": "./models/BoxTextured/BoxTextured.gltf", "TRANS": [1.5, 0.0, 10.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [6.0, 6.0, 6.0] }
+  ],
+
+  "EnvironmentMap": {
+    "Path": "./textures/brown_photostudio_02_4k.hdr"
+  }
+}
