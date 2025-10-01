@@ -9,7 +9,7 @@ namespace cpt {
     enum class ColorSpace { Linear, sRGB };
 
     // sampler state for cudaTextureObject
-    struct Sampler {
+    struct SamplerDesc {
         cudaTextureAddressMode addressU = cudaAddressModeClamp;
         cudaTextureAddressMode addressV = cudaAddressModeClamp;
         cudaTextureFilterMode  filter = cudaFilterModeLinear;
@@ -21,7 +21,7 @@ namespace cpt {
     struct TextureDesc {
         PixelFormat pixelFormat = PixelFormat::RGBA32F;
         ColorSpace  colorSpace = ColorSpace::Linear;
-        Sampler     sampler = {};
+        SamplerDesc     sampler = {};
     };
 
 

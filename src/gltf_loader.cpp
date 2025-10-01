@@ -41,8 +41,18 @@ namespace {
         std::string*                    err
     );
 
+    enum TexUse : int { UseNone = 0, UseSRGB = 1 << 0, UseLinear = 1 << 1 };
 
+    inline cpt::ColorSpace PickColorSpaceFromUse(int use); 
 
+    inline void FillDefaultSampler(cpt::SamplerDesc& s); 
+
+    inline void ParseOneMaterial(const tinygltf::Material& gm,
+        int texOffset,
+        const tinygltf::Model& model,
+        Material& outM);
+
+    inline Material MakeDefaultMaterial();
 } // namespace
 
 // public api
@@ -401,6 +411,127 @@ namespace {
         }
 
         return true;
+    }
+
+    inline int ChooseUseForTexture(const tinygltf::Model& model, int texIndex) {
+        int use = UseNone;
+        if (texIndex < 0 || texIndex >= (int)model.textures.size()) return use;
+        // scan materials for references
+        for (const auto& gm : model.materials) {
+            const auto& pmr = gm.pbrMetallicRoughness;
+
+            if (pmr.baseColorTexture.index == texIndex) use |= UseSRGB;
+            if (gm.emissiveTexture.index == texIndex)   use |= UseSRGB;
+            if (pmr.metallicRoughnessTexture.index == texIndex) use |= UseLinear;
+            if (gm.normalTexture.index == texIndex) use |= UseLinear;
+            if (gm.occlusionTexture.index == texIndex) use |= UseLinear;
+
+            // extension textures (optional, can be added later)
+        }
+        return use;
+    }
+
+    inline cpt::ColorSpace PickColorSpaceFromUse(int use) {
+        // if any srgb usage exists, prefer srgb, else linear
+        return (use & UseSRGB) ? cpt::ColorSpace::sRGB : cpt::ColorSpace::Linear;
+    }
+
+    inline void FillDefaultSampler(cpt::SamplerDesc& s) {
+        s.addressU = cudaAddressModeWrap;
+        s.addressV = cudaAddressModeWrap;
+        s.filter = cudaFilterModeLinear;
+        s.normalizedCoords = true;
+        s.readMode = cudaReadModeElementType;
+    }
+
+    inline void ParseOneMaterial(const tinygltf::Material& gm,
+        int texOffset,
+        const tinygltf::Model& model,
+        Material& outM)
+    {
+        outM.type = MaterialType::PBR;
+        outM.baseColor = glm::vec3(1.f);
+        outM.metallic = 1.f;
+        outM.roughness = 1.f;
+        outM.emissiveColor = glm::vec3(0.f);
+        outM.emissiveTex = -1;
+        outM.emissiveStrength = 1.f; // emissiveStrength default
+        outM.ior = 1.5f;
+        outM.transmission = 0.f;
+        outM.baseColorTex = -1;
+        outM.metallicRoughnessTex = -1;
+        outM.normalTex = -1;
+        outM.normalScale = 1.f;
+
+        const auto& pmr = gm.pbrMetallicRoughness;
+
+        if (pmr.baseColorFactor.size() >= 3) {
+            outM.baseColor = glm::vec3(
+                (float)pmr.baseColorFactor[0],
+                (float)pmr.baseColorFactor[1],
+                (float)pmr.baseColorFactor[2]);
+        }
+        if (pmr.metallicFactor >= 0.0)  outM.metallic = (float)pmr.metallicFactor;
+        if (pmr.roughnessFactor >= 0.0) outM.roughness = (float)pmr.roughnessFactor;
+
+        if (pmr.baseColorTexture.index >= 0)
+            outM.baseColorTex = texOffset + pmr.baseColorTexture.index;
+
+        if (pmr.metallicRoughnessTexture.index >= 0)
+            outM.metallicRoughnessTex = texOffset + pmr.metallicRoughnessTexture.index;
+
+        if (!gm.emissiveFactor.empty()) {
+            outM.emissiveColor = glm::vec3(
+                (float)gm.emissiveFactor[0],
+                (float)gm.emissiveFactor[1],
+                (float)gm.emissiveFactor[2]);
+        }
+        if (gm.emissiveTexture.index >= 0)
+            outM.emissiveTex = texOffset + gm.emissiveTexture.index;
+
+        auto itES = gm.extensions.find("KHR_materials_emissive_strength");
+        if (itES != gm.extensions.end()) {
+            const auto& ext = itES->second;
+            auto val = ext.Get("emissiveStrength");
+            if (val.IsNumber()) outM.emissiveStrength = (float)val.Get<double>();
+        }
+
+        if (gm.normalTexture.index >= 0) {
+            outM.normalTex = texOffset + gm.normalTexture.index;
+            outM.normalScale = (float)gm.normalTexture.scale;
+        }
+
+        auto itIOR = gm.extensions.find("KHR_materials_ior");
+        if (itIOR != gm.extensions.end()) {
+            auto val = itIOR->second.Get("ior");
+            if (val.IsNumber()) outM.ior = (float)val.Get<double>();
+        }
+
+        auto itTR = gm.extensions.find("KHR_materials_transmission");
+        if (itTR != gm.extensions.end()) {
+            auto val = itTR->second.Get("transmissionFactor");
+            if (val.IsNumber()) outM.transmission = (float)val.Get<double>();
+        }
+    }
+
+    inline Material MakeDefaultMaterial() {
+        Material m{};
+        m.type = MaterialType::PBR;
+        m.baseColor = glm::vec3(1.f);
+        m.metallic = 1.f;
+        m.roughness = 1.f;
+        m.emissiveColor = glm::vec3(0.f);
+        m.emissiveTex = -1;
+        m.emissiveStrength = 0.f;
+        m.ior = 1.5f;
+        m.transmission = 0.f;
+        m.baseColorTex = -1;
+        m.metallicRoughnessTex = -1;
+        m.normalTex = -1;
+        m.normalScale = 1.f;
+        m.specular.exponent = 0.f;
+        m.specular.color = glm::vec3(1.f);
+        return m;
     }
 
 } // namespace

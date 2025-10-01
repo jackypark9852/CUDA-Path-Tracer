@@ -7,7 +7,7 @@
 
 namespace cpt {
     static bool   createArray(Texture2D& t, PixelFormat fmt, int w, int h);
-    static bool   createTextureObject(Texture2D& t, const Sampler& s);
+    static bool   createTextureObject(Texture2D& t, const SamplerDesc& s);
     static void   clear(Texture2D& t);
 
     bool isFloat16(PixelFormat f) {
@@ -298,7 +298,7 @@ namespace cpt {
         return ret;
     }
 
-    static bool createTextureObject(Texture2D& t, const Sampler& s) {
+    static bool createTextureObject(Texture2D& t, const SamplerDesc& s) {
         cudaResourceDesc res{};
         res.resType = cudaResourceTypeArray;
         res.res.array.array = t.array;

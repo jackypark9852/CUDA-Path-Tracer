@@ -38,7 +38,7 @@ DEVICE_INLINE void ShadeEmissiveImpl(
         return;
     }
     Material mat = m[isect.materialId];
-    seg->color *= mat.baseColor * mat.emittance;
+    seg->color *= mat.baseColor * mat.emissiveStrength;
     seg->shouldTerminate = true;
 }
 

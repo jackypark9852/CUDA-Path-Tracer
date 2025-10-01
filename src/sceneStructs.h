@@ -25,7 +25,8 @@ struct Material
     
     glm::vec3 baseColor;
     float ior;
-    float emittance;
+    glm::vec3 emissiveColor; 
+    float emissiveStrength; 
     float metallic;
     float roughness;
     float transmission; 
@@ -34,6 +35,7 @@ struct Material
     int baseColorTex;
     int metallicRoughnessTex;
     int normalTex;
+    float normalScale; 
     int emissiveTex;
 
     // For perfectly specular case

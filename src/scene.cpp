@@ -66,7 +66,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 newMaterial.type = MaterialType::EMISSIVE;
                 const auto& col = p["RGB"];
                 newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
-                newMaterial.emittance = p["EMITTANCE"];
+                newMaterial.emissiveStrength = p["EMITTANCE"];
             }
             else if (p["TYPE"] == "Specular")
             {
@@ -87,7 +87,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 const auto& col = p["RGB"];
                 newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
                 newMaterial.ior = p["IOR"];
-                newMaterial.emittance = p["EMITTANCE"];
+                newMaterial.emissiveStrength = p["EMITTANCE"];
                 newMaterial.metallic = p["METALLIC"];
                 newMaterial.roughness = p["ROUGHNESS"];
                 newMaterial.transmission = p["TRANSMISSIVE"];
