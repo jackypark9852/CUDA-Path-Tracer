@@ -134,7 +134,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
             HostGltfScene gltf;
             std::string err;
-            if (!LoadGltfFile(path.string(), gltf, &err)) {
+            if (!LoadGltfFile(path.string(), gltf, materials, textures, &err)) {
                 std::cerr << "gltf load failed: " << err << std::endl;
             }
 

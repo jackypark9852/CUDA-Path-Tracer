@@ -32,7 +32,14 @@ namespace {
         std::vector<glm::mat4>& worldPerNode);
 
     // create HostGLTFMesh from a gltf mesh
-    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGltfMesh& dst, std::string* err);
+    bool ConvertMesh(
+        const tinygltf::Model&          model, 
+        const tinygltf::Mesh&           src, 
+        HostGltfMesh&                   dst, 
+        std::vector<Material>&          mats, 
+        std::vector<cpt::Texture2D>&    texs,
+        std::string*                    err
+    );
 
 
 
@@ -40,7 +47,12 @@ namespace {
 
 // public api
 
-bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string* err)
+bool LoadGltfFile(
+    const std::string&              path, 
+    HostGltfScene&                  outScene, 
+    std::vector<Material>&          outMaterials, 
+    std::vector<cpt::Texture2D>&    outTextures,
+    std::string*                    err)
 {
     // parse gltf/glb
     tinygltf::Model model;
@@ -67,7 +79,7 @@ bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string*
 
     for (const auto& m : model.meshes) {
         HostGltfMesh dst;
-        if (!ConvertMesh(model, m, dst, err)) {
+        if (!ConvertMesh(model, m, dst, outMaterials, outTextures, err)) {
             // skip invalid meshes but continue
             continue;
         }
@@ -340,7 +352,13 @@ namespace {
         }
     }
 
-    bool ConvertMesh(const tinygltf::Model& model, const tinygltf::Mesh& src, HostGltfMesh& dst, std::string* err)
+    bool ConvertMesh(
+        const tinygltf::Model&          model, 
+        const tinygltf::Mesh&           src, 
+        HostGltfMesh&                   dst, 
+        std::vector<Material>&          mats, 
+        std::vector<cpt::Texture2D>&    texs, 
+        std::string*                    err)
     {
         dst.name = src.name;
         dst.primitives.clear();

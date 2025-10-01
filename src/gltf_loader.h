@@ -10,6 +10,9 @@
 #include <vector>
 #include <glm/glm.hpp>
 
+#include "sceneStructs.h"
+#include "texture.h"
+
 struct HostGltfPrimitive {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
@@ -71,12 +74,19 @@ struct DeviceGltfScene {
     std::vector<void*> ownedPrimArrays;        // per-mesh: array<DevicePrimitive>
 };
 
-bool LoadGltfFile(const std::string& path, HostGltfScene& outScene, std::string* err = nullptr);
+bool LoadGltfFile(
+    const std::string&              path,              // relative path to .gltf
+    HostGltfScene&                  outScene,          // host-side data with mesh and instances array
+    std::vector<Material>&          outMaterials,      // appends new materials to this array
+    std::vector<cpt::Texture2D>&    outTextures,       // appends new textures to this array
+    std::string*                    err = nullptr      // for error-handling
+);
 
 // Sends host-side data to device 
 DeviceGltfScene UploadGltfData(
     const std::vector<HostGltfInstance>&    hostInstances,
-    const std::vector<HostGltfMesh>&        hostMeshes);
+    const std::vector<HostGltfMesh>&        hostMeshes
+);
 
 void FreeDeviceGltfScene(DeviceGltfScene gltfScene); 
 
