@@ -57,7 +57,6 @@ namespace {
         Material& outM);
 } // namespace
 
-// public api
 
 bool LoadGltfFile(
     const std::string&              gltfPath, 
@@ -514,6 +513,18 @@ namespace {
             if (!ReadAccessorIndicesU32(model, prim.indices, hp.indices)) {
                 if (err) *err += "unsupported index type\n";
                 continue;
+            }
+
+            // generate sequential indices if non-indexed
+            if (hp.indices.empty()) {
+                const size_t n = hp.positions.size();
+                hp.indices.resize(n);
+                for (uint32_t i = 0; i < (uint32_t)n; ++i) hp.indices[i] = i;
+
+                // guard: triangle list requires multiple of 3
+                if (n % 3 != 0 && err) {
+                    *err += "non-indexed vertex count not multiple of 3 in mesh " + src.name + "\n";
+                }
             }
 
             BuildAabb(hp.positions, hp.aabbMin, hp.aabbMax);

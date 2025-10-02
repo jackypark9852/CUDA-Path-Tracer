@@ -9,7 +9,8 @@ struct HostGltfPrimitive {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> uvs;
-    std::vector<uint32_t>  indices;         // 0 if non-indexed
+    std::vector<uint32_t>  indices;
+    std::vector<glm::vec3> centroids; 
     int materialIndex = -1;
     glm::vec3 aabbMin = glm::vec3(FLT_MAX);
     glm::vec3 aabbMax = glm::vec3(-FLT_MAX);
