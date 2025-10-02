@@ -5,15 +5,25 @@
 #include <string>
 #include <vector>
 
+#include "bvh.h"
+
 struct HostGltfPrimitive {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> uvs;
     std::vector<uint32_t>  indices;
+
+    // bvh buffers
     std::vector<glm::vec3> centroids; 
+    std::vector<BvhNode> bvhNodes; 
+
     int materialIndex = -1;
     glm::vec3 aabbMin = glm::vec3(FLT_MAX);
     glm::vec3 aabbMax = glm::vec3(-FLT_MAX);
+
+    uint32_t GetTriCount() {
+        return static_cast<uint32_t>(indices.size() / 3); 
+    }
 };
 
 struct HostGltfMesh {

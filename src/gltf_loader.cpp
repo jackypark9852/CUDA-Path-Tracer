@@ -8,6 +8,7 @@
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tiny_gltf.h"
 
+#include "bvh.h"
 #include "gltf_loader.h"
 #include "utilities.h"
 
@@ -550,8 +551,12 @@ namespace {
 
             BuildAabb(hp.positions, hp.aabbMin, hp.aabbMax);
 
-            hp.materialIndex = (prim.material >= 0) ? (matOffset + prim.material) : defaultMatIdx;
+            if (!ConstructBVH(hp.positions, hp.centroids, hp.indices, hp.bvhNodes, err)) {
+                *err += src.name + "\n";
+                return false;
+            }
 
+            hp.materialIndex = (prim.material >= 0) ? (matOffset + prim.material) : defaultMatIdx;
             dst.primitives.push_back(std::move(hp));
         }
 
