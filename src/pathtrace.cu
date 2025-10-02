@@ -176,10 +176,16 @@ __device__ inline glm::vec3 XformVector(const glm::mat4& m, const glm::vec3& v) 
     return glm::vec3(m * glm::vec4(v, 0.f));
 }
 
-__device__ inline glm::vec3 InterpNormal(const glm::vec3* nrm, int i0, int i1, int i2, float u, float v) {
-    glm::vec3 n0 = nrm[i0], n1 = nrm[i1], n2 = nrm[i2];
+__device__ inline glm::vec3 InterpVec3(const glm::vec3* inVec3, int i0, int i1, int i2, float u, float v) {
+    glm::vec3 n0 = inVec3[i0], n1 = inVec3[i1], n2 = inVec3[i2];
     float w = 1.f - u - v;
-    return glm::normalize(w * n0 + u * n1 + v * n2);
+    return w * n0 + u * n1 + v * n2;
+}
+
+__device__ inline glm::vec2 InterpVec2(const glm::vec2* inVec2, int i0, int i1, int i2, float u, float v) {
+    glm::vec2 n0 = inVec2[i0], n1 = inVec2[i1], n2 = inVec2[i2];
+    float w = 1.f - u - v;
+    return w * n0 + u * n1 + v * n2;
 }
 
 __global__ void ComputeIntersections(
@@ -202,6 +208,7 @@ __global__ void ComputeIntersections(
     int hitGeomIdx = -1;
     int hitMeshIdx = -1;
     int hitPrimIdx = -1;
+    glm::vec2 bestUv(0.f);
 
     {
         float t;
@@ -273,11 +280,21 @@ __global__ void ComputeIntersections(
 
                 float u = bary.y;
                 float v = bary.z;
+                float w = 1.f - u - v;
 
-                glm::vec3 n_os = dp.normals ? InterpNormal(dp.normals, i0, i1, i2, u, v)
-                    : glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                // interpolate normals if availible
+                glm::vec3 n_os = dp.normals ? 
+                    glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
+                    glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+                // convert normals to world space
                 glm::vec3 n_ws = glm::normalize(XformVector(Nmt, n_os));
                 if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
+
+                // interpolate uv if available
+                glm::vec2 uvHit = dp.uvs ?
+                    InterpVec2(dp.uvs, i0, i1, i2, u, v) :
+                    glm::vec2(0.0f); 
 
                 hitSomething = true;
                 tMin = tWorld;
@@ -285,6 +302,8 @@ __global__ void ComputeIntersections(
                 hitGeomIdx = -1;
                 hitMeshIdx = inst.meshIndex;
                 hitPrimIdx = pi;
+
+                bestUv = uvHit;
             }
         }
     }
@@ -300,6 +319,7 @@ __global__ void ComputeIntersections(
         intersections[path_index].materialId = geoms[hitGeomIdx].materialid;
         intersections[path_index].materialType = geoms[hitGeomIdx].materialType;
         intersections[path_index].surfaceNormal = nMin;
+        intersections[path_index].uv = glm::vec2(0.f);
         return;
     }
 
@@ -309,6 +329,7 @@ __global__ void ComputeIntersections(
             deviceGltfScene.meshes[hitMeshIdx].primitives[hitPrimIdx].materialIndex;
         intersections[path_index].materialType = MaterialType::PBR;
         intersections[path_index].surfaceNormal = nMin;
+        intersections[path_index].uv = bestUv;
         return;
     }
 }

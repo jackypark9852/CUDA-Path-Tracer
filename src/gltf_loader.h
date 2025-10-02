@@ -43,7 +43,7 @@ struct HostGltfScene {
 struct DevicePrimitive {
     const glm::vec3* positions;
     const glm::vec3* normals;           // can be nullptr
-    const glm::vec3* uvs;               // can be nullptr
+    const glm::vec2* uvs;               // can be nullptr
     const uint32_t* indices;            // can be nullptr (for non-indexed)
     int numVertices;                    // size of positions (and normals if present)
     int numIndices;                     // 3*n for triangles, 0 if non-indexed

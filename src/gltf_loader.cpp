@@ -229,6 +229,7 @@ DeviceGltfScene UploadGltfData(
             DevicePrimitive dp{};
             dp.positions = nullptr;
             dp.normals = nullptr;
+            dp.uvs = nullptr;
             dp.indices = nullptr;
             dp.numVertices = static_cast<int>(hp.positions.size());
             dp.numIndices = static_cast<int>(hp.indices.size());
@@ -264,6 +265,18 @@ DeviceGltfScene UploadGltfData(
                 cudaMemcpy(dnor, hp.normals.data(), bytes, cudaMemcpyHostToDevice);
                 checkCUDAError("cudaMemcpy normals");
                 dp.normals = dnor;
+            }
+
+            // uvs (optional)
+            if (!hp.uvs.empty()) {
+                glm::vec2* duv = nullptr;
+                size_t bytes = sizeof(glm::vec2) * hp.indices.size();
+                cudaMalloc((void**)&duv, bytes);
+                checkCUDAError("cudaMalloc indices");
+                ds.ownedVertexBuffers.push_back(duv);
+                cudaMemcpy(duv, hp.uvs.data(), bytes, cudaMemcpyHostToDevice);
+                checkCUDAError("cudaMemcpy indices");
+                dp.uvs = duv;
             }
 
             // indices (optional)

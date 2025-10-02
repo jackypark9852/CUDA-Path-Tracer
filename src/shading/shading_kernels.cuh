@@ -197,6 +197,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     ShadeableIntersection* isect,
     PathSegment* seg,
     Material* mat,
+    cpt::Texture2D* textures,
     thrust::default_random_engine& rng)
 {
     BSDFSample sample{}; sample.pdf = 0.f;
@@ -238,9 +239,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     float pTrans = wTransS / wSum;
     float pMS = wMS / wSum;
 
-
     float xi = u01(rng);
-
     // diffuse lobe (cosine-weighted in world space)
     if (xi < pDiffuse) {
         glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
@@ -249,8 +248,8 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
         
-        //glm::vec3 baseColor = HasBaseColorTex(mat) ? tex2D<float4>(mat->baseColorTex, uv.x, uv.y) : mat->baseColor; 
-        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(mat->baseColor);
+        glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
+        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
 
         sample.incomingDir = wi;                     // world space
         sample.bsdfValue = fd;                     // brdf value
@@ -328,7 +327,7 @@ DEVICE_INLINE void ShadePbrImpl(
     thrust::default_random_engine rng =
         MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
 
-    BSDFSample sample = SampleBSDF(isect, seg, mat, rng);
+    BSDFSample sample = SampleBSDF(isect, seg, mat, t, rng);
 
     glm::vec3 nW = glm::normalize(isect->surfaceNormal);
     glm::vec3 wi = glm::normalize(sample.incomingDir);
