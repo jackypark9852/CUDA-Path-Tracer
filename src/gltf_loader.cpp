@@ -233,6 +233,7 @@ DeviceGltfScene UploadGltfData(
             dp.normals = nullptr;
             dp.uvs = nullptr;
             dp.indices = nullptr;
+            dp.bvhNodes = nullptr;
             dp.numVertices = static_cast<int>(hp.positions.size());
             dp.numIndices = static_cast<int>(hp.indices.size());
             dp.materialIndex = hp.materialIndex;
@@ -291,6 +292,17 @@ DeviceGltfScene UploadGltfData(
                 cudaMemcpy(didx, hp.indices.data(), bytes, cudaMemcpyHostToDevice);
                 checkCUDAError("cudaMemcpy indices");
                 dp.indices = didx;
+            }
+
+            if (!hp.bvhNodes.empty()) {
+                BvhNode* dbvh = nullptr; 
+                size_t bytes = sizeof(BvhNode) * hp.bvhNodes.size(); 
+                cudaMalloc((void**)&dbvh, bytes);
+                checkCUDAError("cudaMalloc bvh"); 
+                ds.ownedVertexBuffers.push_back(dbvh); 
+                cudaMemcpy(dbvh, hp.bvhNodes.data(), bytes, cudaMemcpyHostToDevice); 
+                checkCUDAError("cudaMemcpy bvh"); 
+                dp.bvhNodes = dbvh; 
             }
 
             // write primitive header

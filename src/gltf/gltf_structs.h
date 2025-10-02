@@ -17,7 +17,7 @@ struct HostGltfPrimitive {
     std::vector<glm::vec3> centroids; 
     std::vector<BvhNode> bvhNodes; 
 
-    int materialIndex = -1;
+    int materialIndex = -1; 
     glm::vec3 aabbMin = glm::vec3(FLT_MAX);
     glm::vec3 aabbMax = glm::vec3(-FLT_MAX);
 
@@ -34,6 +34,7 @@ struct HostGltfMesh {
 struct HostGltfInstance {
     int meshIndex = -1;         // index into the array of meshes
     glm::mat4 world = glm::mat4(1.0f);
+    glm::mat4 invWorld = glm::mat4(1.0f); 
     int nodeIndex = -1;         // just for debug
 };
 
@@ -48,8 +49,12 @@ struct DevicePrimitive {
     const glm::vec3* normals;           // can be nullptr
     const glm::vec2* uvs;               // can be nullptr
     const uint32_t* indices;            // can be nullptr (for non-indexed)
+
+    const BvhNode* bvhNodes;
+
     int numVertices;                    // size of positions (and normals if present)
     int numIndices;                     // 3*n for triangles, 0 if non-indexed
+    int numBvhNodes;
     int materialIndex;                  // one material per primitive
 
     glm::vec3 aabbMin, aabbMax;
