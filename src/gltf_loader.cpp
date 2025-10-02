@@ -41,6 +41,8 @@ namespace {
         std::string*            err
     );
 
+    glm::vec3 ComputeCentroid(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2); 
+
     enum TexUse : int { UseNone = 0, UseSRGB = 1 << 0, UseLinear = 1 << 1 };
 
     inline int ChooseUseForTexture(const tinygltf::Model& model, int texIndex);
@@ -516,15 +518,34 @@ namespace {
             }
 
             // generate sequential indices if non-indexed
+            const size_t nPos = hp.positions.size();
             if (hp.indices.empty()) {
-                const size_t n = hp.positions.size();
-                hp.indices.resize(n);
-                for (uint32_t i = 0; i < (uint32_t)n; ++i) hp.indices[i] = i;
-
                 // guard: triangle list requires multiple of 3
-                if (n % 3 != 0 && err) {
+                if (nPos % 3 != 0 && err) {
                     *err += "non-indexed vertex count not multiple of 3 in mesh " + src.name + "\n";
+                    return false;
                 }
+
+                hp.indices.resize(nPos);
+                for (uint32_t i = 0; i < (uint32_t)nPos; ++i) hp.indices[i] = i;
+            }
+            
+            // compute the centroid of each tri for bvh construction
+            const size_t nIdx = hp.indices.size(); 
+            // guard: indices list requires multiple of 3
+            if (nIdx % 3 != 0 && err) {
+                *err += "index count not multiple of 3 in mesh " + src.name + "\n";
+                return false;
+            }
+            size_t numTris = nIdx / 3;
+            hp.centroids.resize(numTris); 
+            for (uint32_t i = 0; i < (uint32_t)numTris; i++) {
+                hp.centroids[i] = 
+                    ComputeCentroid(
+                        hp.positions[hp.indices[i*3]],
+                        hp.positions[hp.indices[i*3 + 1]],
+                        hp.positions[hp.indices[i*3 + 2]]
+                    ); 
             }
 
             BuildAabb(hp.positions, hp.aabbMin, hp.aabbMax);
@@ -535,6 +556,10 @@ namespace {
         }
 
         return true;
+    }
+
+    inline glm::vec3 ComputeCentroid(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2) {
+        return (v0 + v1 + v2) / 3.0f; 
     }
 
     inline int ChooseUseForTexture(const tinygltf::Model& model, int texIndex) {

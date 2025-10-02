@@ -2,7 +2,7 @@
 
 #include "gltf_loader.h"
 #include "sceneStructs.h"
-#include "texture.h"\
+#include "texture.h"
 #include <vector>
 
 class Scene
