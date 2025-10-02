@@ -1,22 +1,30 @@
+// this .cu’s own header first
 #include "pathtrace.h"
 
+// c/c++ std
 #include <cstdio>
-#include <cuda.h>
 #include <cmath>
-#include "device_launch_parameters.h"
-#include "gltf_loader.h"
+
+// cuda runtime (prefer runtime api over driver api)
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+
+#include <thrust/execution_policy.h>
+#include <thrust/partition.h>
+#include <thrust/random.h>
+
+#include "settings.h"
+#include "sceneStructs.h"
+#include "scene.h"
 #include "utilities.h"
 #include "intersections.h"
 #include "interactions.h"
-#include "sceneStructs.h"
-#include "scene.h"
-#include "settings.h"
-#include "shading/shading_common.cuh" 
+#include "shading/shading_common.cuh"
 #include "shading/shading_kernels.cuh"
 #include "texture.h"
-#include <thrust/execution_policy.h>
-#include <thrust/random.h>
-#include <thrust/partition.h>
+#include "gltf/gltf_structs.h"
+#include "gltf_loader.h"
+
 
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm::vec3* image)
