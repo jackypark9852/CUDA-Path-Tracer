@@ -49,7 +49,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             const auto& name = item.key();
             const auto& p = item.value();
-            Material newMaterial{};
+            Material newMaterial = MakeDefaultMaterial(); 
             if (p["TYPE"] == "Diffuse")
             {
                 newMaterial.type = MaterialType::DIFFUSE;
