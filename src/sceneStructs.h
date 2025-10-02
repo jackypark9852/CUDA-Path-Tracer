@@ -133,6 +133,16 @@ struct ShadeableIntersection
     glm::vec2 uv; 
 };
 
+struct HitState {
+    bool        hit;
+    float       tMin;
+    glm::vec3   nWs;
+    glm::vec2   uv;
+    int         hitGeomIdx;
+    int         hitMeshIdx;
+    int         hitPrimIdx;
+};
+
 struct BSDFSample {
     glm::vec3 incomingDir;
     glm::vec3 bsdfValue;   // f(wo, wi)

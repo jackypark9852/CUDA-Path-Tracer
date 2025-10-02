@@ -196,54 +196,43 @@ __device__ inline glm::vec2 InterpVec2(const glm::vec2* inVec2, int i0, int i1, 
     return w * n0 + u * n1 + v * n2;
 }
 
-__global__ void ComputeIntersections(
-    int depth,
-    int numPaths,
-    PathSegment* pathSegments,
-    Geom* geoms,
-    int geomsSize,
-    DeviceGltfScene deviceGltfScene,
-    ShadeableIntersection* intersections)
+__device__ inline void InitHitState(HitState& s) {
+    s.hit = false;
+    s.tMin = FLT_MAX;
+    s.nWs = glm::vec3(0.f);
+    s.uv = glm::vec2(0.f);
+    s.hitGeomIdx = -1;
+    s.hitMeshIdx = -1;
+    s.hitPrimIdx = -1;
+}
+
+__device__ inline void MaybeUpdateBest(float tWorld,
+    const glm::vec3& nWs,
+    const glm::vec2& uv,
+    int meshIdx, int primIdx,
+    HitState& s)
 {
-    int path_index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (path_index >= numPaths) return;
-
-    PathSegment& seg = pathSegments[path_index];
-
-    bool hitSomething = false;
-    float tMin = FLT_MAX;
-    glm::vec3 nMin(0.f);
-    int hitGeomIdx = -1;
-    int hitMeshIdx = -1;
-    int hitPrimIdx = -1;
-    glm::vec2 bestUv(0.f);
-
-    {
-        float t;
-        glm::vec3 tmpI, tmpN;
-        bool outside;
-        for (int i = 0; i < geomsSize; ++i) {
-            Geom& g = geoms[i];
-            if (g.type == CUBE)        t = boxIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
-            else if (g.type == SPHERE) t = sphereIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
-            else                       t = -1.f;
-
-            if (t > 0.f && t < tMin) {
-                hitSomething = true;
-                tMin = t;
-                nMin = tmpN;
-                hitGeomIdx = i;
-                hitMeshIdx = -1;
-                hitPrimIdx = -1;
-            }
-        }
+    if (tWorld < s.tMin) {
+        s.hit = true;
+        s.tMin = tWorld;
+        s.nWs = nWs;
+        s.uv = uv;
+        s.hitGeomIdx = -1;
+        s.hitMeshIdx = meshIdx;
+        s.hitPrimIdx = primIdx;
     }
+}
 
-    for (int ii = 0; ii < deviceGltfScene.numInstances; ++ii) {
-        const DeviceInstance inst = deviceGltfScene.instances[ii];
-        if (inst.meshIndex < 0 || inst.meshIndex >= deviceGltfScene.numMeshes) continue;
+__device__ inline void TraverseSceneNaiveGltf(
+    const DeviceGltfScene& scene,
+    const PathSegment& seg,
+    HitState& hs)
+{
+    for (int ii = 0; ii < scene.numInstances; ++ii) {
+        const DeviceInstance inst = scene.instances[ii];
+        if (inst.meshIndex < 0 || inst.meshIndex >= scene.numMeshes) continue;
 
-        const DeviceMesh dmesh = deviceGltfScene.meshes[inst.meshIndex];
+        const DeviceMesh dmesh = scene.meshes[inst.meshIndex];
         if (dmesh.numPrimitives <= 0) continue;
 
         const glm::mat4 M = inst.world;
@@ -273,71 +262,101 @@ __global__ void ComputeIntersections(
                     i0 = b + 0; i1 = b + 1; i2 = b + 2;
                 }
 
-                glm::vec3 v0 = dp.positions[i0];
-                glm::vec3 v1 = dp.positions[i1];
-                glm::vec3 v2 = dp.positions[i2];
+                const glm::vec3 v0 = dp.positions[i0];
+                const glm::vec3 v1 = dp.positions[i1];
+                const glm::vec3 v2 = dp.positions[i2];
 
                 float t;
                 glm::vec3 bary;
                 if (!RayTriangleIntersect(v0, v1, v2, ro_os, rd_os, t, bary)) continue;
 
-                glm::vec3 p_os = ro_os + t * rd_os;
-                glm::vec3 p_ws = XformPoint(M, p_os);
-                float tWorld = glm::length(p_ws - seg.ray.origin);
-                if (tWorld >= tMin) continue;
+                const glm::vec3 p_os = ro_os + t * rd_os;
+                const glm::vec3 p_ws = XformPoint(M, p_os);
+                const float tWorld = glm::length(p_ws - seg.ray.origin);
+                if (tWorld >= hs.tMin) continue;
 
-                float u = bary.y;
-                float v = bary.z;
-                float w = 1.f - u - v;
+                const float u = bary.y;
+                const float v = bary.z;
 
-                // interpolate normals if availible
-                glm::vec3 n_os = dp.normals ? 
+                glm::vec3 n_os = dp.normals ?
                     glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
                     glm::normalize(glm::cross(v1 - v0, v2 - v0));
-
-                // convert normals to world space
                 glm::vec3 n_ws = glm::normalize(XformVector(Nmt, n_os));
                 if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
 
-                // interpolate uv if available
-                glm::vec2 uvHit = dp.uvs ?
-                    InterpVec2(dp.uvs, i0, i1, i2, u, v) :
-                    glm::vec2(0.0f); 
+                const glm::vec2 uv = dp.uvs ? InterpVec2(dp.uvs, i0, i1, i2, u, v) : glm::vec2(0.f);
 
-                hitSomething = true;
-                tMin = tWorld;
-                nMin = n_ws;
-                hitGeomIdx = -1;
-                hitMeshIdx = inst.meshIndex;
-                hitPrimIdx = pi;
+                MaybeUpdateBest(tWorld, n_ws, uv, inst.meshIndex, pi, hs);
+            }
+        }
+    }
+}
 
-                bestUv = uvHit;
+__global__ void ComputeIntersections(
+    int depth, int numPaths,
+    PathSegment* pathSegments,
+    Geom* geoms, int geomsSize,
+    DeviceGltfScene deviceGltfScene,
+    ShadeableIntersection* intersections)
+{
+    int path_index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (path_index >= numPaths) return;
+
+    PathSegment& seg = pathSegments[path_index];
+
+    HitState hs; InitHitState(hs);
+
+    {
+        float t;
+        glm::vec3 tmpI, tmpN;
+        bool outside;
+        for (int i = 0; i < geomsSize; ++i) {
+            Geom& g = geoms[i];
+            if (g.type == CUBE)        t = boxIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
+            else if (g.type == SPHERE) t = sphereIntersectionTest(g, seg.ray, tmpI, tmpN, outside);
+            else                       t = -1.f;
+
+            if (t > 0.f && t < hs.tMin) {
+                hs.hit = true;
+                hs.tMin = t;
+                hs.nWs = tmpN;
+                hs.hitGeomIdx = i;
+                hs.hitMeshIdx = -1;
+                hs.hitPrimIdx = -1;
+                hs.uv = glm::vec2(0.f);
             }
         }
     }
 
-    if (!hitSomething) {
+    if (1) {
+        TraverseSceneNaiveGltf(deviceGltfScene, seg, hs);
+    }
+    else {
+        // TraverseSceneBvh(deviceGltfScene, seg, bvh, hs);
+    }
+
+    if (!hs.hit) {
         intersections[path_index].t = -1.f;
         intersections[path_index].materialType = MaterialType::ENVMAP;
         return;
     }
 
-    if (hitGeomIdx != -1) {
-        intersections[path_index].t = tMin;
-        intersections[path_index].materialId = geoms[hitGeomIdx].materialid;
-        intersections[path_index].materialType = geoms[hitGeomIdx].materialType;
-        intersections[path_index].surfaceNormal = nMin;
+    if (hs.hitGeomIdx != -1) {
+        intersections[path_index].t = hs.tMin;
+        intersections[path_index].materialId = geoms[hs.hitGeomIdx].materialid;
+        intersections[path_index].materialType = geoms[hs.hitGeomIdx].materialType;
+        intersections[path_index].surfaceNormal = hs.nWs;
         intersections[path_index].uv = glm::vec2(0.f);
         return;
     }
 
-    if (hitMeshIdx != -1) {
-        intersections[path_index].t = tMin;
+    if (hs.hitMeshIdx != -1) {
+        intersections[path_index].t = hs.tMin;
         intersections[path_index].materialId =
-            deviceGltfScene.meshes[hitMeshIdx].primitives[hitPrimIdx].materialIndex;
+            deviceGltfScene.meshes[hs.hitMeshIdx].primitives[hs.hitPrimIdx].materialIndex;
         intersections[path_index].materialType = MaterialType::PBR;
-        intersections[path_index].surfaceNormal = nMin;
-        intersections[path_index].uv = bestUv;
+        intersections[path_index].surfaceNormal = hs.nWs;
+        intersections[path_index].uv = hs.uv;
         return;
     }
 }
