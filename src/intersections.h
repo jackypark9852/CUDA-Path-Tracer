@@ -78,3 +78,9 @@ __host__ __device__ bool RayTriangleIntersect(
     float& outDist, glm::vec3& outBary);
 
 __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3); 
+
+__host__ __device__ bool RayAABBIntersection(
+    glm::vec3 aabbMin,
+    glm::vec3 aabbMax,
+    Ray r,
+    float t);

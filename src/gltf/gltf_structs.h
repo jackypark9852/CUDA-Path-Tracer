@@ -35,6 +35,7 @@ struct HostGltfInstance {
     int meshIndex = -1;         // index into the array of meshes
     glm::mat4 world = glm::mat4(1.0f);
     glm::mat4 invWorld = glm::mat4(1.0f); 
+    glm::mat4 normalXf = glm::mat4(1.0f);
     int nodeIndex = -1;         // just for debug
 };
 
@@ -70,6 +71,8 @@ struct DeviceMesh {
 struct DeviceInstance {
     int meshIndex;                    // index into device array of DeviceMesh
     glm::mat4 world;                  // node world transform
+    glm::mat4 invWorld; 
+    glm::mat4 normalXf;
 };
 
 struct DeviceGltfScene {

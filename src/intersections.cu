@@ -172,3 +172,23 @@ __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t
     return glm::vec3(S1 / S, S2 / S, S3 / S);
 }
 
+__host__ __device__ bool RayAABBIntersection(
+    glm::vec3 aabbMin,
+    glm::vec3 aabbMax,
+    Ray r, 
+    float t) 
+{
+    float tx1 = (aabbMin.x - r.origin.x) / r.direction.x;
+    float tx2 = (aabbMax.x - r.origin.x) / r.direction.x;
+    float tmin = fminf(tx1, tx2); 
+    float tmax = fmaxf(tx1, tx2);
+    float ty1 = (aabbMin.y - r.origin.y) / r.direction.y;
+    float ty2 = (aabbMax.y - r.origin.y) / r.direction.y;
+    tmin = fmaxf(tmin, fminf(ty1, ty2)); 
+    tmax = fminf(tmax, fmaxf(ty1, ty2));
+    float tz1 = (aabbMin.z - r.origin.z) / r.direction.z;
+    float tz2 = (aabbMax.z - r.origin.z) / r.direction.z;
+    tmin = fmaxf(tmin, fminf(tz1, tz2)); 
+    tmax = fminf(tmax, fmaxf(tz1, tz2));
+    return tmax >= tmin && tmin < t && tmax > 0;
+}

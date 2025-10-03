@@ -10,7 +10,6 @@ struct BvhNode
 {
     glm::vec3 aabbMin, aabbMax;
     unsigned int leftFirst, triCount;;
-    const bool isLeaf() { return triCount > 0; }
 };
 
 // Constructs BVH based on tri centrioids, outputs in outBvhNodes, 

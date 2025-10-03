@@ -228,16 +228,16 @@ __device__ inline void TraverseSceneNaiveGltf(
     const PathSegment& seg,
     HitState& hs)
 {
-    for (int ii = 0; ii < scene.numInstances; ++ii) {
-        const DeviceInstance inst = scene.instances[ii];
+    for (int i = 0; i < scene.numInstances; ++i) {
+        const DeviceInstance inst = scene.instances[i];
         if (inst.meshIndex < 0 || inst.meshIndex >= scene.numMeshes) continue;
 
         const DeviceMesh dmesh = scene.meshes[inst.meshIndex];
         if (dmesh.numPrimitives <= 0) continue;
 
-        const glm::mat4 M = inst.world;
-        const glm::mat4 Mi = glm::inverse(M);
-        const glm::mat4 Nmt = glm::transpose(Mi);
+        const glm::mat4& M = inst.world;
+        const glm::mat4& Mi = inst.invWorld;
+        const glm::mat4& Nxf = inst.normalXf; 
 
         const glm::vec3 ro_os = XformPoint(Mi, seg.ray.origin);
         const glm::vec3 rd_os = glm::normalize(XformVector(Mi, seg.ray.direction));
@@ -246,21 +246,13 @@ __device__ inline void TraverseSceneNaiveGltf(
             const DevicePrimitive dp = dmesh.primitives[pi];
             if (dp.numVertices <= 0) continue;
 
-            const bool indexed = (dp.indices != nullptr) && (dp.numIndices >= 3);
-            const int triCount = indexed ? (dp.numIndices / 3) : (dp.numVertices / 3);
+            const int triCount = dp.numIndices / 3;
 
             for (int ti = 0; ti < triCount; ++ti) {
-                int i0, i1, i2;
-                if (indexed) {
-                    int b = ti * 3;
-                    i0 = dp.indices[b + 0];
-                    i1 = dp.indices[b + 1];
-                    i2 = dp.indices[b + 2];
-                }
-                else {
-                    int b = ti * 3;
-                    i0 = b + 0; i1 = b + 1; i2 = b + 2;
-                }
+                int b = ti * 3;
+                int i0 = dp.indices[b + 0];
+                int  i1 = dp.indices[b + 1];
+                int i2 = dp.indices[b + 2];
 
                 const glm::vec3 v0 = dp.positions[i0];
                 const glm::vec3 v1 = dp.positions[i1];
@@ -281,7 +273,7 @@ __device__ inline void TraverseSceneNaiveGltf(
                 glm::vec3 n_os = dp.normals ?
                     glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
                     glm::normalize(glm::cross(v1 - v0, v2 - v0));
-                glm::vec3 n_ws = glm::normalize(XformVector(Nmt, n_os));
+                glm::vec3 n_ws = glm::normalize(XformVector(Nxf, n_os));
                 if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
 
                 const glm::vec2 uv = dp.uvs ? InterpVec2(dp.uvs, i0, i1, i2, u, v) : glm::vec2(0.f);
@@ -291,6 +283,95 @@ __device__ inline void TraverseSceneNaiveGltf(
         }
     }
 }
+
+__device__ inline void TraverseSceneBvh(
+    const DeviceGltfScene& scene,
+    const PathSegment& seg,
+    HitState& hs)
+{
+    // fixed small stack; increase if your bvh gets deeper
+    int stack[64];
+
+    for (int ii = 0; ii < scene.numInstances; ++ii) {
+        const DeviceInstance inst = scene.instances[ii];
+        if (inst.meshIndex < 0 || inst.meshIndex >= scene.numMeshes) continue;
+
+        const DeviceMesh dmesh = scene.meshes[inst.meshIndex];
+        if (dmesh.numPrimitives <= 0) continue;
+
+        const glm::mat4& M = inst.world;
+        const glm::mat4& Mi = inst.invWorld;
+        const glm::mat4& Nxf = inst.normalXf;
+        
+        Ray objRay; 
+        objRay.origin = XformPoint(Mi, seg.ray.origin);
+        objRay.direction = glm::normalize(XformVector(Mi, seg.ray.direction));
+
+        for (int pi = 0; pi < dmesh.numPrimitives; ++pi) {
+            const DevicePrimitive dp = dmesh.primitives[pi];
+            if (dp.numVertices <= 0 || dp.bvhNodes == nullptr) continue;
+
+            // root at index 0
+            int sp = 0;
+            stack[sp++] = 0;
+
+            while (sp > 0) {
+                const int nodeIdx = stack[--sp];
+                const BvhNode node = dp.bvhNodes[nodeIdx];
+
+                if (!RayAABBIntersection(node.aabbMin, node.aabbMax, objRay, hs.tMin)) continue;
+
+                if (node.triCount > 0) { // is a leaf node
+                    const uint32_t start = node.leftFirst;
+                    const uint32_t end = start + node.triCount;
+                    for (uint32_t triIdx = start; triIdx < end; ++triIdx) {
+                        const int b = static_cast<int>(triIdx) * 3;
+                        const int i0 = dp.indices[b + 0];
+                        const int i1 = dp.indices[b + 1];
+                        const int i2 = dp.indices[b + 2];
+
+                        const glm::vec3 v0 = dp.positions[i0];
+                        const glm::vec3 v1 = dp.positions[i1];
+                        const glm::vec3 v2 = dp.positions[i2];
+
+                        float t;
+                        glm::vec3 bary;
+                        if (!RayTriangleIntersect(v0, v1, v2, objRay.origin, objRay.direction, t, bary)) continue;
+
+                        // convert to world-space distance for fair compare with other accel paths
+                        const glm::vec3 p_os = objRay.origin + t * objRay.direction;
+                        const glm::vec3 p_ws = XformPoint(M, p_os);
+                        const float tWorld = glm::length(p_ws - seg.ray.origin);
+                        if (tWorld >= hs.tMin) continue;
+
+                        const float u = bary.y;
+                        const float v = bary.z;
+               
+                        glm::vec3 n_os = dp.normals ?
+                            glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
+                            glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+                        glm::vec3 n_ws = glm::normalize(XformVector(Nxf, n_os));
+                        if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
+
+                        const glm::vec2 uv = dp.uvs ? InterpVec2(dp.uvs, i0, i1, i2, u, v)
+                            : glm::vec2(0.f);
+
+                        MaybeUpdateBest(tWorld, n_ws, uv, inst.meshIndex, pi, hs);
+                    }
+                }
+                else { // is not a leaf node
+                    const int leftIdx = static_cast<int>(node.leftFirst);
+                    const int rightIdx = leftIdx + 1;
+
+                    if (sp < 63) stack[sp++] = rightIdx;
+                    if (sp < 63) stack[sp++] = leftIdx;
+                }
+            }
+        }
+    }
+}
+
 
 __global__ void ComputeIntersections(
     int depth, int numPaths,
@@ -328,11 +409,11 @@ __global__ void ComputeIntersections(
         }
     }
 
-    if (1) {
+    if (0) {
         TraverseSceneNaiveGltf(deviceGltfScene, seg, hs);
     }
     else {
-        // TraverseSceneBvh(deviceGltfScene, seg, bvh, hs);
+        TraverseSceneBvh(deviceGltfScene, seg, hs);
     }
 
     if (!hs.hit) {

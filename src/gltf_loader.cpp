@@ -171,6 +171,8 @@ bool LoadGltfFile(
         HostGltfInstance inst;
         inst.meshIndex = n.mesh;
         inst.world = worldPerNode[ni];
+        inst.invWorld = glm::inverse(inst.world); 
+        inst.normalXf = glm::transpose(inst.invWorld); 
         inst.nodeIndex = (int)ni;
         outScene.instances.push_back(inst);
     }
@@ -201,6 +203,8 @@ DeviceGltfScene UploadGltfData(
         DeviceInstance di{};
         di.meshIndex = hostInstances[i].meshIndex;
         di.world = hostInstances[i].world;
+        di.invWorld = hostInstances[i].invWorld; 
+        di.normalXf = hostInstances[i].normalXf;
         cudaMemcpy(ds.instances + i, &di, sizeof(DeviceInstance), cudaMemcpyHostToDevice);
         checkCUDAError("cudaMemcpy device instance");
     }
@@ -297,7 +301,7 @@ DeviceGltfScene UploadGltfData(
             if (!hp.bvhNodes.empty()) {
                 BvhNode* dbvh = nullptr; 
                 size_t bytes = sizeof(BvhNode) * hp.bvhNodes.size(); 
-                cudaMalloc((void**)&dbvh, bytes);
+                cudaMalloc((void**)&dbvh, bytes);   
                 checkCUDAError("cudaMalloc bvh"); 
                 ds.ownedVertexBuffers.push_back(dbvh); 
                 cudaMemcpy(dbvh, hp.bvhNodes.data(), bytes, cudaMemcpyHostToDevice); 
@@ -334,6 +338,8 @@ void ApplyRootTransform(HostGltfScene& scene, const glm::mat4& root)
 {
     for (auto& inst : scene.instances) {
         inst.world = root * inst.world;
+        inst.invWorld = glm::inverse(inst.world);   
+        inst.normalXf = glm::transpose(inst.invWorld); 
     }
 }
 
