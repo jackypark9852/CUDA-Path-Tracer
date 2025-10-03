@@ -406,7 +406,7 @@ DEVICE_INLINE void ShadeNormalImpl(
     const glm::vec3 n = isect->surfaceNormal;
     glm::vec3 c = 0.5f * (n + glm::vec3(1.0f));
     c = glm::clamp(c, glm::vec3(0.0f), glm::vec3(1.0f));
-    seg->color = (isect->t > 0.0f)? c : glm::vec3(0.f);
+    seg->color = (isect->t > 0.0f)? c : glm::vec3(1.0f);
     seg->shouldTerminate = true;
 }
 

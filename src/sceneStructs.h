@@ -49,9 +49,9 @@ struct Material
 inline Material MakeDefaultMaterial() {
     Material m{};
     m.type = MaterialType::PBR;
-    m.baseColor = glm::vec3(1.f, 0.f, 1.f);
-    m.metallic = 0.5f;
-    m.roughness = 0.5f;
+    m.baseColor = glm::vec3(1.f, 1.f, 1.f);
+    m.metallic = 0.7f;
+    m.roughness = 0.2f;
     m.emissiveColor = glm::vec3(0.f);
     m.emissiveTex = -1;
     m.emissiveStrength = 0.f;

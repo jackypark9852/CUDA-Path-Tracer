@@ -25,7 +25,7 @@
 #include "gltf/gltf_structs.h"
 #include "gltf_loader.h"
 
-#define NORMAL
+//#define NORMAL
 
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -307,7 +307,12 @@ __device__ inline void TraverseSceneBvh(
         
         Ray objRay; 
         objRay.origin = XformPoint(Mi, seg.ray.origin);
-        objRay.direction = glm::normalize(XformVector(Mi, seg.ray.direction));
+        const glm::vec3 d_os_unnorm = XformVector(Mi, seg.ray.direction);
+        const float dir_os_len = glm::length(d_os_unnorm);
+        // Guard against degenerate transforms
+        if (dir_os_len <= 0.0f) continue;
+        objRay.direction = d_os_unnorm / dir_os_len;
+        float bestT_os = (hs.tMin < FLT_MAX * 0.5f) ? (hs.tMin * dir_os_len) : FLT_MAX;
 
         for (int pi = 0; pi < dmesh.numPrimitives; ++pi) {
             const DevicePrimitive dp = dmesh.primitives[pi];
@@ -320,8 +325,8 @@ __device__ inline void TraverseSceneBvh(
             while (sp > 0) {
                 const int nodeIdx = stack[--sp];
                 const BvhNode node = dp.bvhNodes[nodeIdx];
-
-                if (!RayAABBIntersection(node.aabbMin, node.aabbMax, objRay, hs.tMin)) continue;
+                
+                if (!RayAABBIntersection(node.aabbMin, node.aabbMax, objRay, bestT_os)) continue;
 
                 if (node.triCount > 0) { // is a leaf node
                     const uint32_t start = node.leftFirst;
@@ -336,30 +341,51 @@ __device__ inline void TraverseSceneBvh(
                         const glm::vec3 v1 = dp.positions[i1];
                         const glm::vec3 v2 = dp.positions[i2];
 
-                        float t;
+                        float t_os;
                         glm::vec3 bary;
-                        if (!RayTriangleIntersect(v0, v1, v2, objRay.origin, objRay.direction, t, bary)) continue;
+                        if (!RayTriangleIntersect(v0, v1, v2, objRay.origin, objRay.direction, t_os, bary)) continue;
 
-                        // convert to world-space distance for fair compare with other accel paths
-                        const glm::vec3 p_os = objRay.origin + t * objRay.direction;
+                        // early reject against current per-instance OS bound
+                        if (t_os >= bestT_os) continue;
+
+                        // convert to world-space distance to compare against global best hs.tMin
+                        const glm::vec3 p_os = objRay.origin + t_os * objRay.direction;
                         const glm::vec3 p_ws = XformPoint(M, p_os);
                         const float tWorld = glm::length(p_ws - seg.ray.origin);
-                        if (tWorld >= hs.tMin) continue;
+                        if (tWorld >= hs.tMin) {
+                            // didn't beat the global world-space best; keep searching
+                            continue;
+                        }
 
                         const float u = bary.y;
                         const float v = bary.z;
-               
-                        glm::vec3 n_os = dp.normals ?
-                            glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
-                            glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
-                        glm::vec3 n_ws = glm::normalize(XformVector(Nxf, n_os));
-                        if (glm::dot(n_ws, seg.ray.direction) > 0.f) n_ws = -n_ws;
+                        // geometric normal in object space
+                        glm::vec3 ng_os = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+                        // shading normal in object space (use vertex normal if present)
+                        glm::vec3 ns_os = dp.normals ?
+                            glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
+                            ng_os;  // fallback to geometric
+
+                        // transform both with the normal matrix (transpose(invWorld))
+                        glm::vec3 ng_ws = glm::normalize(XformVector(Nxf, ng_os));
+                        glm::vec3 ns_ws = glm::normalize(XformVector(Nxf, ns_os));
+
+                        // If the instance transform has a reflection (negative determinant),
+                        // triangle winding flips in world space. Align shading normal to geometric:
+                        if (glm::determinant(glm::mat3(inst.world)) < 0.0f) {
+                            ng_ws = -ng_ws;
+                        }
+
+                        // force shading normal to agree with geometric normal
+                        if (glm::dot(ns_ws, ng_ws) < 0.0f) ns_ws = -ns_ws;
 
                         const glm::vec2 uv = dp.uvs ? InterpVec2(dp.uvs, i0, i1, i2, u, v)
                             : glm::vec2(0.f);
 
-                        MaybeUpdateBest(tWorld, n_ws, uv, inst.meshIndex, pi, hs);
+                        MaybeUpdateBest(tWorld, ns_ws, uv, inst.meshIndex, pi, hs);
+                        bestT_os = t_os;  // tighten OS pruning window within this instance
                     }
                 }
                 else { // is not a leaf node

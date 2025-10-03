@@ -53,6 +53,7 @@
         src/intersections.h
         src/glslUtility.hpp
         src/gltf_loader.h
+        src/gltf/gltf_structs.h
         src/pathtrace.h
         src/scene.h
         src/sceneStructs.h
@@ -65,7 +66,7 @@
     )
 
     set(sources
-        src/bvh.h
+        src/bvh.cpp
         src/main.cpp
         src/stb.cpp
         src/image.cpp
