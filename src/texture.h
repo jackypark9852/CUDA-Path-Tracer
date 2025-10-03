@@ -30,7 +30,7 @@ namespace cpt {
         int width = 0;
         int height = 0;
 
-        // backing storage for texture/surface (don't deref on device)
+        // backing storage for texture/surface; never deref this on device
         cudaArray_t array = nullptr;
 
         // texture handle for device-side sampling
@@ -42,23 +42,21 @@ namespace cpt {
         __host__ __device__ explicit operator bool() const { return texObj != 0; }
     };
 
-    // --- creation / teardown helpers (host-side) --------------------------------
+    // helpers
     bool createTextureFromFile(Texture2D& out,
         const std::filesystem::path& filePath,
         const TextureDesc& desc,
         cudaStream_t stream = 0);
 
-    // create from already-prepared pixels with a given row pitch in bytes.
     bool createTextureFromPixels(Texture2D& out,
         int w, int h,
         const void* pixels, size_t rowPitchBytes,
         const TextureDesc& desc,
         cudaStream_t stream = 0);
 
-    // clean-up CUDA resources
+    // clean-up resources
     void destroyTexture(Texture2D& t);
 
-    // --- loader & format utilities ----------------------------------------------
     bool loadFile(const std::filesystem::path& path,
         PixelFormat targetFormat,
         ColorSpace  srcColorSpace,

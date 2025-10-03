@@ -1,0 +1,38 @@
+{
+	"manifest docs": "[TODO:public URL] https://gitlab-master.nvidia.com/rtx/ntc/-/blob/main/doc/Manifest.md",
+    "textures": [
+        {
+            "fileName": "WaterBottle_baseColor.png",
+            "name": "baseColor",
+            "isSRGB": true,
+            "semantics": {
+                "Albedo": "RGB"
+            }
+        },
+        {
+            "fileName": "WaterBottle_emissive.png",
+            "name": "emissive",
+            "isSRGB": true,
+            "semantics": {
+                "Emissive": "RGB"
+            }
+        },
+        {
+            "fileName": "WaterBottle_normal.png",
+            "name": "normal",
+            "semantics": {
+                "Normal": "RGB"
+            }
+        },
+        {
+            "fileName": "WaterBottle_occlusionRoughnessMetallic.png",
+            "name": "occlusionRoughnessMetallic",
+            "semantics": {
+                "Occlusion": "R",
+                "Roughness": "G",
+                "Metalness": "B"
+            }
+        }
+    ]
+}
+

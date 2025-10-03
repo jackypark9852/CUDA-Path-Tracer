@@ -1,0 +1,16 @@
+OptiX Licenses
+==============
+
+The files in the OptiX SDK are licensed under multiple licenses. The
+respective applicable license can be found in the header of each file.
+
+".cmake" files (in SDK/CMake) and parts taken from the NVIDIA Optical Flow SDK
+(SDK/optixOpticalFlow/nv*) are licensed under the MIT license. 
+
+The OptiX public API headers in the include/ directory are licensed 
+under either a BSD-3 license or the NVIDIA Proprietary license. Please refer
+to the license posted to the top each individual file.
+
+The OptiX SDK contains third-party products which are licensed with their own
+respective license. A detailed listing of the thirdparty-licenses can be found
+in OptiX_ThirdParty_Licenses.txt

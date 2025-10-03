@@ -1,140 +1,151 @@
-    cmake_minimum_required(VERSION 3.24)
-    project(cis565_path_tracer LANGUAGES CUDA CXX)
+cmake_minimum_required(VERSION 3.24)
+project(cis565_path_tracer LANGUAGES CUDA CXX)
 
-    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-    set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CUDA_STANDARD 17)
-    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-    if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-        SET(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
-        SET_PROPERTY(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-    endif()
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    SET(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+    SET_PROPERTY(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
 
-    find_package(OpenGL REQUIRED)
-    find_package(CUDAToolkit REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 
-    if(UNIX)
-        include_directories("${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
-        find_package(glfw3 REQUIRED)
-        find_package(GLEW REQUIRED)
-        set(GL_LIBRARIES glfw ${GLEW_LIBRARIES} ${OPENGL_LIBRARIES})
-    else()
-        set(EXTERNAL "${CMAKE_SOURCE_DIR}/external")
 
-        set(GLFW_ROOT_DIR ${EXTERNAL})
-        set(GLFW_USE_STATIC_LIBS ON)
-        find_package(GLFW REQUIRED)
+set(OptiX_ROOT "${CMAKE_SOURCE_DIR}/external/OptiX SDK 9.0.0" CACHE PATH "Path to OptiX SDK")
+set(OptiX_INCLUDE_DIR "${OptiX_ROOT}/include")
 
-        set(GLEW_ROOT_DIR ${EXTERNAL})
-        set(GLEW_USE_STATIC_LIBS ON)
-        find_package(GLEW REQUIRED)
+if(UNIX)
+    include_directories("${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
+    find_package(glfw3 REQUIRED)
+    find_package(GLEW REQUIRED)
+    set(GL_LIBRARIES glfw ${GLEW_LIBRARIES} ${OPENGL_LIBRARIES})
+else()
+    set(EXTERNAL "${CMAKE_SOURCE_DIR}/external")
 
-        add_definitions(${GLEW_DEFINITIONS})
-        include_directories(${GLEW_INCLUDE_DIR} ${GLFW_INCLUDE_DIR})
-        set(GL_LIBRARIES ${GLEW_LIBRARY} ${GLFW_LIBRARY} ${OPENGL_LIBRARY})
-    endif()
+    set(GLFW_ROOT_DIR ${EXTERNAL})
+    set(GLFW_USE_STATIC_LIBS ON)
+    find_package(GLFW REQUIRED)
 
-    set(GLM_ROOT_DIR "${CMAKE_SOURCE_DIR}/external")
-    find_package(GLM REQUIRED)
-    include_directories(${GLM_INCLUDE_DIRS})
+    set(GLEW_ROOT_DIR ${EXTERNAL})
+    set(GLEW_USE_STATIC_LIBS ON)
+    find_package(GLEW REQUIRED)
 
-    set(headers
-        src/bvh.h
-        src/image.h
-        src/interactions.h
-        src/intersections.h
-        src/glslUtility.hpp
-        src/gltf_loader.h
-        src/gltf/gltf_structs.h
-        src/pathtrace.h
-        src/scene.h
-        src/sceneStructs.h
-        src/utilities.h
-        src/settings.h
-        src/texture.h
-        src/shading/shading_common.cuh
-        src/shading/shading_bsdf.cuh
-        src/shading/shading_kernels.cuh
-    )
+    add_definitions(${GLEW_DEFINITIONS})
+    include_directories(${GLEW_INCLUDE_DIR} ${GLFW_INCLUDE_DIR})
+    set(GL_LIBRARIES ${GLEW_LIBRARY} ${GLFW_LIBRARY} ${OPENGL_LIBRARY})
+endif()
 
-    set(sources
-        src/bvh.cpp
-        src/main.cpp
-        src/stb.cpp
-        src/image.cpp
-        src/glslUtility.cpp
-        src/gltf_loader.cpp
-        src/pathtrace.cu
-        src/intersections.cu
-        src/interactions.cu
-        src/scene.cpp
-        src/utilities.cpp
-        src/settings.cpp
-        src/texture.cpp
-        src/shading/shading_kernels.cu
-    )
+set(GLM_ROOT_DIR "${CMAKE_SOURCE_DIR}/external")
+find_package(GLM REQUIRED)
+include_directories(${GLM_INCLUDE_DIRS})
 
-    set(imgui_headers
-        src/ImGui/imconfig.h
-        src/ImGui/imgui.h
-        src/ImGui/imgui_impl_glfw.h
-        src/ImGui/imgui_impl_opengl3.h
-        src/ImGui/imgui_impl_opengl3_loader.h
-        src/ImGui/imgui_internal.h
-        src/ImGui/imstb_rectpack.h
-        src/ImGui/imstb_textedit.h
-        src/ImGui/imstb_truetype.h
-    )
+set(headers
+    src/bvh.h
+    src/denoise_optix.h
+    src/image.h
+    src/interactions.h
+    src/intersections.h
+    src/glslUtility.hpp
+    src/gltf_loader.h
+    src/pathtrace.h
+    src/scene.h
+    src/sceneStructs.h
+    src/utilities.h
+    src/settings.h
+    src/texture.h
+    src/shading/shading_common.cuh
+    src/shading/shading_bsdf.cuh
+    src/shading/shading_kernels.cuh
+)
 
-    set(imgui_sources
-        src/ImGui/imgui.cpp
-        src/ImGui/imgui_demo.cpp
-        src/ImGui/imgui_draw.cpp
-        src/ImGui/imgui_impl_glfw.cpp
-        src/ImGui/imgui_impl_opengl3.cpp
-        src/ImGui/imgui_tables.cpp
-        src/ImGui/imgui_widgets.cpp
-    )
+set(sources
+    src/bvh.cpp
+    src/denoise_optix.cpp
+    src/main.cpp
+    src/stb.cpp
+    src/image.cpp
+    src/glslUtility.cpp
+    src/gltf_loader.cpp
+    src/pathtrace.cu
+    src/intersections.cu
+    src/interactions.cu
+    src/scene.cpp
+    src/utilities.cpp
+    src/settings.cpp
+    src/texture.cpp
+    src/shading/shading_kernels.cu
+)
 
-    list(SORT headers)
-    list(SORT sources)
-    list(SORT imgui_headers)
-    list(SORT imgui_sources)
+set(imgui_headers
+    src/ImGui/imconfig.h
+    src/ImGui/imgui.h
+    src/ImGui/imgui_impl_glfw.h
+    src/ImGui/imgui_impl_opengl3.h
+    src/ImGui/imgui_impl_opengl3_loader.h
+    src/ImGui/imgui_internal.h
+    src/ImGui/imstb_rectpack.h
+    src/ImGui/imstb_textedit.h
+    src/ImGui/imstb_truetype.h
+)
 
-    source_group("Headers" FILES ${headers})
-    source_group("Sources" FILES ${sources})
-    source_group("ImGui\\Headers" FILES ${imgui_headers})
-    source_group("ImGui\\Sources" FILES ${imgui_sources})
-    source_group("Shading\\Headers" FILES
-      src/shading/shading_common.cuh
-      src/shading/shading_bsdf.cuh
-      src/shading/shading_kernels.cuh
-    )
-    source_group("Shading\\Sources" FILES
-      src/shading/shading_kernels.cu
-    )
+set(imgui_sources
+    src/ImGui/imgui.cpp
+    src/ImGui/imgui_demo.cpp
+    src/ImGui/imgui_draw.cpp
+    src/ImGui/imgui_impl_glfw.cpp
+    src/ImGui/imgui_impl_opengl3.cpp
+    src/ImGui/imgui_tables.cpp
+    src/ImGui/imgui_widgets.cpp
+)
 
-    add_executable(${CMAKE_PROJECT_NAME} ${sources} ${headers} ${imgui_sources} ${imgui_headers})
-    target_link_libraries(${CMAKE_PROJECT_NAME}
-        ${GL_LIBRARIES}
-        CUDA::cudart
-    )
-    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+list(SORT headers)
+list(SORT sources)
+list(SORT imgui_headers)
+list(SORT imgui_sources)
 
-    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
-      CUDA_SEPARABLE_COMPILATION ON
-      CUDA_ARCHITECTURES native
-    )
+source_group("Headers" FILES ${headers})
+source_group("Sources" FILES ${sources})
+source_group("ImGui\\Headers" FILES ${imgui_headers})
+source_group("ImGui\\Sources" FILES ${imgui_sources})
+source_group("Shading\\Headers" FILES
+  src/shading/shading_common.cuh
+  src/shading/shading_bsdf.cuh
+  src/shading/shading_kernels.cuh
+)
+source_group("Shading\\Sources" FILES
+  src/shading/shading_kernels.cu
+)
 
-    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Debug,RelWithDebInfo>,$<COMPILE_LANGUAGE:CUDA>>:-G;-src-in-ptx>")
-    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-lineinfo;-src-in-ptx>")
+add_executable(${CMAKE_PROJECT_NAME} ${sources} ${headers} ${imgui_sources} ${imgui_headers})
 
-    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${CMAKE_PROJECT_NAME})
+# Add CUDA toolkit + OptiX includes to target
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CUDAToolkit_INCLUDE_DIRS}
+    "${OptiX_INCLUDE_DIR}"
+)
+
+target_link_libraries(${CMAKE_PROJECT_NAME}
+    ${GL_LIBRARIES}
+    CUDA::cudart
+)
+
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+  CUDA_ARCHITECTURES native
+)
+
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Debug,RelWithDebInfo>,$<COMPILE_LANGUAGE:CUDA>>:-G;-src-in-ptx>")
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-lineinfo;-src-in-ptx>")
+
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${CMAKE_PROJECT_NAME})
