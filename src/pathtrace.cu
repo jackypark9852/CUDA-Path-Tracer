@@ -13,17 +13,17 @@
 #include <thrust/partition.h>
 #include <thrust/random.h>
 
+#include "gltf/gltf_structs.h"
+#include "gltf_loader.h"
+#include "intersections.h"
+#include "interactions.h"
 #include "settings.h"
 #include "sceneStructs.h"
 #include "scene.h"
-#include "utilities.h"
-#include "intersections.h"
-#include "interactions.h"
 #include "shading/shading_common.cuh"
 #include "shading/shading_kernels.cuh"
 #include "texture.h"
-#include "gltf/gltf_structs.h"
-#include "gltf_loader.h"
+#include "utilities.h"
 
 //#define NORMAL
 
@@ -599,6 +599,49 @@ static void MaterialSortAndShade(
         }
     }
 }
+
+// pack averaged glm::vec3 into pitched float4 buffer (RGBA32F)
+__global__ void packToFloat4(const glm::vec3* __restrict__ src,
+    float4* __restrict__ dst,
+    int w, int h, size_t pitchBytes,
+    int iter)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= w || y >= h) return;
+
+    const int idx = x + y * w;
+    const float invIt = 1.0f / max(iter, 1);
+
+    char* rowBase = reinterpret_cast<char*>(dst) + y * pitchBytes;
+    float4* row = reinterpret_cast<float4*>(rowBase);
+
+    glm::vec3 c = src[idx] * invIt;
+    row[x] = make_float4(c.x, c.y, c.z, 1.0f);
+}
+
+// blit pitched float4 -> PBO [0, 255]
+__global__ void blitFloat4ToPBO(uchar4* pbo,
+    int w, int h, size_t pitchBytes,
+    const float4* __restrict__ src)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= w || y >= h) return;
+
+    const char* rowBase = reinterpret_cast<const char*>(src) + y * pitchBytes;
+    const float4* row = reinterpret_cast<const float4*>(rowBase);
+    float4 c = row[x];
+
+    int index = x + y * w;
+    auto to8 = [](float v)->unsigned char {
+        v = fminf(fmaxf(v, 0.0f), 1.0f);
+        return static_cast<unsigned char>(v * 255.0f + 0.5f);
+    };
+
+    pbo[index] = make_uchar4(to8(c.x), to8(c.y), to8(c.z), 255);
+}
+
 
 void pathtrace(uchar4* pbo, int frame, int iter)
 {

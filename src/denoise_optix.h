@@ -2,26 +2,15 @@
 
 #include <optix.h>
 #include <optix_stubs.h>
-#include <cuda_runtime.h>
+#include <vector>
+#include <glm/glm.hpp>
 
-struct OptixDenoiserContext {
-    OptixDeviceContext ctx = nullptr;
-    OptixDenoiser denoiser = nullptr;
-    CUdeviceptr d_state = 0;
-    CUdeviceptr d_scratch = 0;
-    size_t stateSizeBytes = 0;
-    size_t scratchSizeBytes = 0;
-    unsigned int width = 0, height = 0;
-    cudaStream_t stream = 0;
-    bool initialized = false;
-};
-
-bool  InitOptixDenoiser(OptixDenoiserContext& odc, int width, int height, cudaStream_t stream = 0,
-    OptixDenoiserModelKind model = OPTIX_DENOISER_MODEL_KIND_HDR);
-bool  optixDenoise(OptixDenoiserContext& odc,
-    CUdeviceptr inColor, size_t inPitchBytes,
-    CUdeviceptr inAlbedo, size_t inAlbedoPitchBytes, // pass 0 if unused
-    CUdeviceptr inNormal, size_t inNormalPitchBytes,  // pass 0 if unused
-    CUdeviceptr outColor, size_t outPitchBytes);
-void  optixDenoiserShutdown(OptixDenoiserContext& odc);
-
+void OptixDenoiseVectors(
+    int width, int height,
+    const std::vector<glm::vec3>& color,                                // required
+    std::vector<glm::vec3>& denoised,
+    const std::vector<glm::vec3>* albedo = nullptr,                     // optional
+    const std::vector<glm::vec3>* normal = nullptr,                     // optional
+    OptixDenoiserModelKind model = OPTIX_DENOISER_MODEL_KIND_LDR,       // LDR by default
+    float blend = 0.0f                                                  // 0=full denoise, 1=original
+);

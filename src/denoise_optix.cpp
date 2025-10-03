@@ -1,8 +1,8 @@
 #include "denoise_optix.h"
-#include <optix_function_table_definition.h>
-#include <optix_stubs.h>
-#include <stdexcept>
 #include <cstring>
+#include <cuda_runtime.h>
+#include <optix_function_table_definition.h>
+#include <stdexcept>
 
 static inline void checkOptix(OptixResult r, const char* msg = "OptiX call failed") {
     if (r != OPTIX_SUCCESS) throw std::runtime_error(msg);
@@ -11,115 +11,151 @@ static inline void checkCuda(cudaError_t e, const char* msg = nullptr) {
     if (e != cudaSuccess) throw std::runtime_error(msg ? msg : cudaGetErrorString(e));
 }
 
-static inline OptixImage2D createImage2D(
-    CUdeviceptr ptr, unsigned int w, unsigned int h, size_t pitchBytes,
-    OptixPixelFormat fmt = OPTIX_PIXEL_FORMAT_FLOAT4)
-{
-    OptixImage2D img{};
-    img.data = ptr;
-    img.width = w;
-    img.height = h;
-    img.rowStrideInBytes = static_cast<unsigned int>(pitchBytes);
-    img.pixelStrideInBytes = (fmt == OPTIX_PIXEL_FORMAT_FLOAT4) ? sizeof(float) * 4 : sizeof(float) * 3;
-    img.format = fmt;
-    return img;
+static inline void packVec3ToFloat4(const std::vector<glm::vec3>& in, std::vector<float4>& out) {
+    out.resize(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+        out[i] = make_float4(in[i].x, in[i].y, in[i].z, 1.0f);
+}
+static inline void unpackFloat4ToVec3(const std::vector<float4>& in, std::vector<glm::vec3>& out) {
+    out.resize(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+        out[i] = glm::vec3(in[i].x, in[i].y, in[i].z);
 }
 
-bool InitOptixDenoiser(OptixDenoiserContext& odc, int w, int h, cudaStream_t stream,
-    OptixDenoiserModelKind model)
-{
-    if (odc.initialized) return true;
+void OptixDenoiseVectors(
+    int width, int height,
+    const std::vector<glm::vec3>& color,                            // required
+    std::vector<glm::vec3>& denoised,                               // required
+    const std::vector<glm::vec3>* albedo,                           // optional
+    const std::vector<glm::vec3>* normal,                           // optional
+    OptixDenoiserModelKind model,                                   // LDR by default
+    float blend                                                     // 0=full denoise, 1=original
+) {
+    if (width <= 0 || height <= 0) throw std::runtime_error("Invalid image size");
+    const size_t N = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (color.size() != N) throw std::runtime_error("color size != width*height");
+    if (albedo && albedo->size() != N) throw std::runtime_error("albedo size mismatch");
+    if (normal && normal->size() != N) throw std::runtime_error("normal size mismatch");
 
+    // init optix and device context
     checkOptix(optixInit(), "optixInit failed");
-
-    CUcontext cuCtx = 0; // use current CUDA context
+    CUcontext cuCtx = 0;
     OptixDeviceContextOptions ctxOpts{};
     ctxOpts.validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_OFF;
     ctxOpts.logCallbackFunction = nullptr;
-    checkOptix(optixDeviceContextCreate(cuCtx, &ctxOpts, &odc.ctx), "optixDeviceContextCreate failed");
+    OptixDeviceContext ctx = nullptr;
+    checkOptix(optixDeviceContextCreate(cuCtx, &ctxOpts, &ctx), "optixDeviceContextCreate failed");
 
-    // create denoiser options
+    // denoiser options
     OptixDenoiserOptions dopt{};
-    // set these guide values to 1u when they are always provided
-    dopt.guideAlbedo = 0u;  // can be null
-    dopt.guideNormal = 0u;  // can be null
-    dopt.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_DENOISE;
+    dopt.guideAlbedo = albedo ? 1u : 0u;
+    dopt.guideNormal = normal ? 1u : 0u;
+    dopt.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
+    OptixDenoiser den = nullptr;
+    checkOptix(optixDenoiserCreate(ctx, model, &dopt, &den), "optixDenoiserCreate failed");
 
-    odc.stream = stream;
-    odc.width = static_cast<unsigned int>(w);
-    odc.height = static_cast<unsigned int>(h);
-
-    // qurty memory sizes and allocated scratch
-    OptixDenoiserSizes sz{};
-    checkOptix(optixDenoiserComputeMemoryResources(odc.denoiser, odc.width, odc.height, &sz),
+    // set sizes
+    OptixDenoiserSizes sizes{};
+    checkOptix(optixDenoiserComputeMemoryResources(den, width, height, &sizes),
         "optixDenoiserComputeMemoryResources failed");
 
-    odc.stateSizeBytes = sz.stateSizeInBytes;
-    odc.scratchSizeBytes = sz.withoutOverlapScratchSizeInBytes;
+    void* d_state = nullptr;
+    void* d_scratch = nullptr;
+    checkCuda(cudaMalloc(&d_state, sizes.stateSizeInBytes));
+    checkCuda(cudaMalloc(&d_scratch, sizes.withoutOverlapScratchSizeInBytes));
 
-    checkCuda(cudaMalloc(reinterpret_cast<void**>(&odc.d_state), odc.stateSizeBytes));
-    checkCuda(cudaMalloc(reinterpret_cast<void**>(&odc.d_scratch), odc.scratchSizeBytes));
+    // pitched io buffers
+    float4* d_inColor = nullptr, * d_outColor = nullptr, * d_inAlbedo = nullptr, * d_inNormal = nullptr;
+    size_t pitchIn = 0, pitchOut = 0, pitchAlb = 0, pitchNrm = 0;
 
+    checkCuda(cudaMallocPitch((void**)&d_inColor, &pitchIn, width * sizeof(float4), height));
+    checkCuda(cudaMallocPitch((void**)&d_outColor, &pitchOut, width * sizeof(float4), height));
+    if (albedo) checkCuda(cudaMallocPitch((void**)&d_inAlbedo, &pitchAlb, width * sizeof(float4), height));
+    if (normal) checkCuda(cudaMallocPitch((void**)&d_inNormal, &pitchNrm, width * sizeof(float4), height));
+
+    // upload
+    std::vector<float4> hCol4, hAlb4, hNrm4;
+    packVec3ToFloat4(color, hCol4);
+    checkCuda(cudaMemcpy2D(d_inColor, pitchIn,
+        hCol4.data(), width * sizeof(float4),
+        width * sizeof(float4), height,
+        cudaMemcpyHostToDevice));
+    if (albedo) {
+        packVec3ToFloat4(*albedo, hAlb4);
+        checkCuda(cudaMemcpy2D(d_inAlbedo, pitchAlb,
+            hAlb4.data(), width * sizeof(float4),
+            width * sizeof(float4), height,
+            cudaMemcpyHostToDevice));
+    }
+    if (normal) {
+        packVec3ToFloat4(*normal, hNrm4);
+        checkCuda(cudaMemcpy2D(d_inNormal, pitchNrm,
+            hNrm4.data(), width * sizeof(float4),
+            width * sizeof(float4), height,
+            cudaMemcpyHostToDevice));
+    }
+
+    // setpup once
     checkOptix(optixDenoiserSetup(
-        odc.denoiser, odc.stream, odc.width, odc.height,
-        odc.d_state, odc.stateSizeBytes,
-        odc.d_scratch, odc.scratchSizeBytes),
+        den, /*stream*/0, width, height,
+        reinterpret_cast<CUdeviceptr>(d_state), sizes.stateSizeInBytes,
+        reinterpret_cast<CUdeviceptr>(d_scratch), sizes.withoutOverlapScratchSizeInBytes),
         "optixDenoiserSetup failed");
 
-    odc.initialized = true;
-    return true;
-}
-
-bool optixDenoise(OptixDenoiserContext& odc,
-    CUdeviceptr inColor, size_t inPitchBytes,
-    CUdeviceptr inAlbedo, size_t inAlbedoPitchBytes,
-    CUdeviceptr inNormal, size_t inNormalPitchBytes,
-    CUdeviceptr outColor, size_t outPitchBytes)
-{
-    if (!odc.initialized) return false;
-
-    // io
-    const OptixImage2D colorIn = createImage2D(inColor, odc.width, odc.height, inPitchBytes, OPTIX_PIXEL_FORMAT_FLOAT4);
-    const OptixImage2D albedoIn = (inAlbedo ? createImage2D(inAlbedo, odc.width, odc.height, inAlbedoPitchBytes, OPTIX_PIXEL_FORMAT_FLOAT4) : OptixImage2D{});
-    const OptixImage2D normalIn = (inNormal ? createImage2D(inNormal, odc.width, odc.height, inNormalPitchBytes, OPTIX_PIXEL_FORMAT_FLOAT4) : OptixImage2D{});
-    const OptixImage2D colorOut = createImage2D(outColor, odc.width, odc.height, outPitchBytes, OPTIX_PIXEL_FORMAT_FLOAT4);
+    // wrap as OptixImage2D
+    auto makeImg = [](CUdeviceptr ptr, unsigned w, unsigned h, size_t pitch) {
+        OptixImage2D img{};
+        img.data = ptr;
+        img.width = w;
+        img.height = h;
+        img.rowStrideInBytes = static_cast<unsigned>(pitch);
+        img.pixelStrideInBytes = sizeof(float4);
+        img.format = OPTIX_PIXEL_FORMAT_FLOAT4;
+        return img;
+    };
+    const OptixImage2D imgIn = makeImg(reinterpret_cast<CUdeviceptr>(d_inColor), width, height, pitchIn);
+    const OptixImage2D imgOut = makeImg(reinterpret_cast<CUdeviceptr>(d_outColor), width, height, pitchOut);
+    const OptixImage2D imgAlb = albedo ? makeImg(reinterpret_cast<CUdeviceptr>(d_inAlbedo), width, height, pitchAlb) : OptixImage2D{};
+    const OptixImage2D imgNrm = normal ? makeImg(reinterpret_cast<CUdeviceptr>(d_inNormal), width, height, pitchNrm) : OptixImage2D{};
 
     OptixDenoiserGuideLayer guide{};
-    if (inAlbedo) guide.albedo = albedoIn;
-    if (inNormal) guide.normal = normalIn;
+    if (albedo) guide.albedo = imgAlb;
+    if (normal) guide.normal = imgNrm;
 
     OptixDenoiserLayer layer{};
-    layer.input = colorIn;
-    layer.output = colorOut;
-
-    OptixDenoiserSizes sz{};
-    checkOptix(optixDenoiserComputeMemoryResources(odc.denoiser, odc.width, odc.height, &sz),
-        "optixDenoiserComputeMemoryResources (invoke) failed");
+    layer.input = imgIn;
+    layer.output = imgOut;
 
     OptixDenoiserParams params{};
-    params.blendFactor = 0.0f;        // 0 = full denoise, 1 = original
+    params.hdrIntensity = 0;     // LDR path, no HDR intensity
+    params.blendFactor = blend; // 0..1
 
     // invoke
     checkOptix(optixDenoiserInvoke(
-        odc.denoiser, odc.stream, &params,
-        odc.d_state, odc.stateSizeBytes,
+        den, /*stream*/0, &params,
+        reinterpret_cast<CUdeviceptr>(d_state), sizes.stateSizeInBytes,
         &guide, &layer, 1,
-        0, 0,
-        odc.d_scratch, odc.scratchSizeBytes),
+        /*offsetX*/0, /*offsetY*/0,
+        reinterpret_cast<CUdeviceptr>(d_scratch), sizes.withoutOverlapScratchSizeInBytes),
         "optixDenoiserInvoke failed");
 
-    return true;
+    // download
+    std::vector<float4> hOut4(N);
+    checkCuda(cudaMemcpy2D(hOut4.data(), width * sizeof(float4),
+        d_outColor, pitchOut,
+        width * sizeof(float4), height,
+        cudaMemcpyDeviceToHost));
+
+    // clean up
+    if (d_inNormal)  cudaFree(d_inNormal);
+    if (d_inAlbedo)  cudaFree(d_inAlbedo);
+    cudaFree(d_outColor);
+    cudaFree(d_inColor);
+    cudaFree(d_scratch);
+    cudaFree(d_state);
+    checkOptix(optixDenoiserDestroy(den), "optixDenoiserDestroy failed");
+    checkOptix(optixDeviceContextDestroy(ctx), "optixDeviceContextDestroy failed");
+
+    // convert back to glm::vec3
+    unpackFloat4ToVec3(hOut4, denoised);
 }
-
-void optixDenoiserShutdown(OptixDenoiserContext& odc)
-{
-    if (!odc.initialized) return;
-
-    if (odc.d_state)   checkCuda(cudaFree(reinterpret_cast<void*>(odc.d_state)));
-    if (odc.d_scratch) checkCuda(cudaFree(reinterpret_cast<void*>(odc.d_scratch)));
-    if (odc.denoiser)  checkOptix(optixDenoiserDestroy(odc.denoiser), "optixDenoiserDestroy failed");
-    if (odc.ctx)       checkOptix(optixDeviceContextDestroy(odc.ctx), "optixDeviceContextDestroy failed");
-
-    std::memset(&odc, 0, sizeof(odc));
-}
-

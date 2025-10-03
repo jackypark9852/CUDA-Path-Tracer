@@ -1,3 +1,4 @@
+#include "denoise_optix.h"
 #include "glslUtility.hpp"
 #include "image.h"
 #include "pathtrace.h"
@@ -399,14 +400,28 @@ void saveImage()
     float samples = iteration;
     // output image file
     Image img(width, height);
+    Image denoisedImg(width, height); 
 
     for (int x = 0; x < width; x++)
     {
         for (int y = 0; y < height; y++)
         {
             int index = x + (y * width);
-            glm::vec3 pix = renderState->image[index];
-            img.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
+            renderState->image[index] /= samples;
+            img.setPixel(width - 1 - x, y, renderState->image[index]); 
+        }
+    }
+
+    std::vector<glm::vec3>& srcImage = renderState->image;
+    std::vector<glm::vec3> denoisedImage; 
+    OptixDenoiseVectors(width, height, srcImage, denoisedImage); 
+
+    for (int x = 0; x < width; x++)
+    {
+        for (int y = 0; y < height; y++)
+        {
+            int index = x + (y * width);
+            denoisedImg.setPixel(width - 1 - x, y, denoisedImage[index]);
         }
     }
 
@@ -417,6 +432,12 @@ void saveImage()
 
     // CHECKITOUT
     img.savePNG(filename);
+
+    ss << "_denoised";
+    filename = ss.str();
+
+    // CHECKITOUT
+    denoisedImg.savePNG(filename);
     //img.saveHDR(filename);  // Save a Radiance HDR file
 }
 

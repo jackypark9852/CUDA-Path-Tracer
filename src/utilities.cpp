@@ -184,3 +184,4 @@ fs::path UtilityCore::ResolvePathRelativeTo(const fs::path& baseFile, const std:
     candidate = candidate.lexically_normal();
     return candidate;
 }
+
