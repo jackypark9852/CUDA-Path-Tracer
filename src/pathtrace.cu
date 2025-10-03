@@ -25,7 +25,7 @@
 #include "texture.h"
 #include "utilities.h"
 
-//#define NORMAL
+#define NORMAL
 
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -54,7 +54,9 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm
 
 static Scene* hst_scene = NULL;
 static GuiDataContainer* guiData = NULL;
-static glm::vec3* dev_image = NULL;
+static glm::vec3* dev_beauty = NULL;
+static glm::vec3* dev_normal = NULL; 
+static glm::vec3* dev_albedo = NULL; 
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static cpt::Texture2D* dev_textures = NULL; 
@@ -89,8 +91,14 @@ void pathtraceInit(Scene* scene)
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
-    cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
+    cudaMalloc(&dev_beauty, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_beauty, 0, pixelcount * sizeof(glm::vec3));
+
+    cudaMalloc(&dev_normal, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_normal, 0, pixelcount * sizeof(glm::vec3));
+
+    cudaMalloc(&dev_albedo, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_albedo, 0, pixelcount * sizeof(glm::vec3));
 
     cudaMalloc(&dev_paths, pixelcount * sizeof(PathSegment));
 
@@ -120,7 +128,9 @@ void pathtraceInit(Scene* scene)
 
 void pathtraceFree()
 {
-    cudaFree(dev_image);  // no-op if dev_image is null
+    cudaFree(dev_beauty);  // no-op if dev_image is null
+    cudaFree(dev_normal); 
+    cudaFree(dev_albedo); 
     cudaFree(dev_paths);
     cudaFree(dev_geoms);
     cudaFree(dev_materials);
@@ -402,7 +412,7 @@ __device__ inline void TraverseSceneBvh(
 
 
 __global__ void ComputeIntersections(
-    int depth, int numPaths,
+    int numPaths,
     PathSegment* pathSegments,
     Geom* geoms, int geomsSize,
     DeviceGltfScene deviceGltfScene,
@@ -656,6 +666,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     const int blockSize1d = 128;
 
+    // normal pass
     generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
 
@@ -663,6 +674,9 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     PathSegment* dev_path_end = dev_paths + pixelcount;
     int numPaths = static_cast<int>(dev_path_end - dev_paths);
 
+    // beauty pass
+    generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
+    checkCUDAError("generate camera ray");
     bool iterationComplete = false;
     while (!iterationComplete)
     {
@@ -670,7 +684,6 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
         ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
-            depth,
             numPaths,
             dev_paths,
             dev_geoms,
@@ -721,12 +734,65 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     }
 
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_image, dev_paths);
+    finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_beauty, dev_paths);
 
-    sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_beauty);
 
-    cudaMemcpy(hst_scene->state.image.data(), dev_image,
+    cudaMemcpy(hst_scene->state.beauty.data(), dev_beauty,
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     checkCUDAError("pathtrace");
+}
+
+void normalPass(int iterCount)
+{
+    const int traceDepth = hst_scene->state.traceDepth;
+    const Camera& cam = hst_scene->state.camera;
+    const int pixelcount = cam.resolution.x * cam.resolution.y;
+
+
+    const dim3 blockSize2d(8, 8);
+    const dim3 blocksPerGrid2d(
+        (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
+        (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
+
+    const int blockSize1d = 128;
+
+    for(int iter = 0; iter < iterCount; ++iter) {
+        // normal pass
+        generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
+        checkCUDAError("generate camera ray");
+
+        PathSegment* dev_path_end = dev_paths + pixelcount;
+        int numPaths = static_cast<int>(dev_path_end - dev_paths);
+
+        cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
+
+        dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
+        ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
+            numPaths,
+            dev_paths,
+            dev_geoms,
+            static_cast<int>(hst_scene->geoms.size()),
+            gltfScene,
+            dev_intersections);
+        checkCUDAError("trace one bounce");
+        cudaDeviceSynchronize();
+
+        const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
+        KernShadeNormal KERNEL_ARGS2(blocksAll, blockSize1d)(
+            iter,
+            numPaths,
+            dev_intersections,
+            dev_paths);
+        checkCUDAError("shade normals");
+
+        dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
+        finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_normal, dev_paths);
+    }
+
+    
+
+    cudaMemcpy(hst_scene->state.normal.data(), dev_normal,
+        pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 }

@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -46,7 +47,7 @@ glm::vec3 ogLookAt; // for recentering the camera
 Scene* scene;
 GuiDataContainer* guiData;
 RenderState* renderState;
-int iteration;
+int beautyIters;
 
 int width;
 int height;
@@ -310,7 +311,7 @@ void mainLoop()
 
         runCuda();
 
-        std::string title = "CIS565 Path Tracer | " + UtilityCore::convertIntToString(iteration) + " Iterations";
+        std::string title = "CIS565 Path Tracer | " + UtilityCore::convertIntToString(beautyIters) + " Iterations";
         glfwSetWindowTitle(window, title.c_str());
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
         glBindTexture(GL_TEXTURE_2D, displayImage);
@@ -360,7 +361,7 @@ int main(int argc, char** argv)
     guiData = new GuiDataContainer();
 
     // Set up camera stuff from loaded path tracer settings
-    iteration = 0;
+    beautyIters = 0;
     renderState = &scene->state;
     Camera& cam = renderState->camera;
     width = cam.resolution.x;
@@ -395,57 +396,87 @@ int main(int argc, char** argv)
     return 0;
 }
 
-void saveImage()
+static inline float linear_to_srgb(float x) {
+    x = fmaxf(x, 0.0f);
+    return (x <= 0.0031308f) ? (12.92f * x) : (1.055f * powf(x, 1.0f / 2.4f) - 0.055f);
+}
+
+static inline glm::vec3 aces(glm::vec3 x) {
+    const glm::vec3 a = glm::vec3(2.51f);
+    const glm::vec3 b = glm::vec3(0.03f);
+    const glm::vec3 c = glm::vec3(2.43f);
+    const glm::vec3 d = glm::vec3(0.59f);
+    const glm::vec3 e = glm::vec3(0.14f);
+    return glm::clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
+}
+
+static inline glm::vec3 reinhard(glm::vec3 c, float exposure = 1.0f) {
+    c *= exposure; 
+    c = c / (glm::vec3(1.0f) + c);
+    return glm::clamp(c, 0.0f, 1.0f);
+}
+
+static inline glm::vec3 to_display(glm::vec3 c) {
+    c = aces(c);
+    return glm::vec3(linear_to_srgb(c.r), linear_to_srgb(c.g), linear_to_srgb(c.b));
+}
+
+
+void inline FillImage(Image& img, int width, int height, const std::vector<glm::vec3>& src)
 {
-    float samples = iteration;
-    // output image file
-    Image img(width, height);
-    Image denoisedImg(width, height); 
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            img.setPixel(width - 1 - x, y, src[x + y * width]); // flip x for png coords
+};
 
-    for (int x = 0; x < width; x++)
-    {
-        for (int y = 0; y < height; y++)
-        {
-            int index = x + (y * width);
-            renderState->image[index] /= samples;
-            img.setPixel(width - 1 - x, y, renderState->image[index]); 
-        }
+void saveImages()
+{
+    const int w = width, h = height;
+    const float samples = static_cast<float>(beautyIters);
+    const std::string base = renderState->imageName + "." + startTimeString + "." + std::to_string(samples) + "samp";
+
+    std::vector<glm::vec3> beautyAvg(renderState->beauty.size());
+    std::vector<glm::vec3> normalAvg(renderState->normal.size());
+    for (int i = 0; i < w * h; ++i) {
+        beautyAvg[i] = renderState->beauty[i] / samples;
+        normalAvg[i] = renderState->normal[i] / static_cast<float>(renderState->aovIters);
     }
 
-    std::vector<glm::vec3>& srcImage = renderState->image;
-    std::vector<glm::vec3> denoisedImage; 
-    OptixDenoiseVectors(width, height, srcImage, denoisedImage); 
+    std::vector<glm::vec3> beautyDenoised;
+    OptixDenoiseVectors(w, h, beautyAvg, beautyDenoised, &normalAvg);
 
-    for (int x = 0; x < width; x++)
-    {
-        for (int y = 0; y < height; y++)
-        {
-            int index = x + (y * width);
-            denoisedImg.setPixel(width - 1 - x, y, denoisedImage[index]);
-        }
+    std::vector<glm::vec3> beautyDisp(w * h);
+    std::vector<glm::vec3> beautyDenoisedDisp(w * h);
+
+    for (int i = 0; i < w * h; ++i) {
+        beautyDisp[i] = to_display(beautyAvg[i]);
+        beautyDenoisedDisp[i] = to_display(beautyDenoised[i]);
     }
 
-    std::string filename = renderState->imageName;
-    std::ostringstream ss;
-    ss << filename << "." << startTimeString << "." << samples << "samp";
-    filename = ss.str();
+    Image imgBeauty(w, h);
+    Image imgNormal(w, h);
+    Image imgBeautyDenoised(w, h);
 
-    // CHECKITOUT
-    img.savePNG(filename);
+    FillImage(imgBeauty, w, h, beautyDisp);
+    FillImage(imgNormal, w, h, normalAvg);
+    FillImage(imgBeautyDenoised, w, h, beautyDenoisedDisp);
 
-    ss << "_denoised";
-    filename = ss.str();
+    namespace fs = std::filesystem;
 
-    // CHECKITOUT
-    denoisedImg.savePNG(filename);
-    //img.saveHDR(filename);  // Save a Radiance HDR file
+    // renders/base/beauty.png etc.
+    const fs::path outDir = fs::path("renders") / base;
+    fs::create_directories(outDir);
+
+    imgBeauty.savePNG((outDir / "beauty.png").string());
+    imgNormal.savePNG((outDir / "normal.png").string());
+    imgBeautyDenoised.savePNG((outDir / "beauty_denoised.png").string());
 }
 
 void runCuda()
 {
     if (camchanged)
     {
-        iteration = 0;
+        beautyIters = 0;
         Camera& cam = renderState->camera;
         cameraPosition.x = zoom * sin(phi) * sin(theta);
         cameraPosition.y = zoom * cos(theta);
@@ -467,28 +498,29 @@ void runCuda()
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
 
-    if (iteration == 0)
+    if (beautyIters == 0)
     {
         pathtraceFree();
         pathtraceInit(scene);
     }
 
-    if (iteration < renderState->iterations)
+    if (beautyIters < renderState->beautyIters)
     {
         uchar4* pbo_dptr = NULL;
-        iteration++;
+        beautyIters++;
         cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration);
+        pathtrace(pbo_dptr, frame, beautyIters);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     }
     else
     {
-        saveImage();
+        normalPass(renderState->aovIters);
+        saveImages();
         pathtraceFree();
         cudaDeviceReset();
         exit(EXIT_SUCCESS);
@@ -506,11 +538,11 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         switch (key)
         {
             case GLFW_KEY_ESCAPE:
-                saveImage();
+                saveImages();
                 glfwSetWindowShouldClose(window, GL_TRUE);
                 break;
             case GLFW_KEY_S:
-                saveImage();
+                saveImages();
                 break;
             case GLFW_KEY_SPACE:
                 camchanged = true;

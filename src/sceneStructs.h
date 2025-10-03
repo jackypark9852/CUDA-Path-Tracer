@@ -49,9 +49,9 @@ struct Material
 inline Material MakeDefaultMaterial() {
     Material m{};
     m.type = MaterialType::PBR;
-    m.baseColor = glm::vec3(1.f, 1.f, 1.f);
-    m.metallic = 0.7f;
-    m.roughness = 0.2f;
+    m.baseColor = glm::vec3(0.063f, 0.024f, 0.624f);
+    m.metallic = 0.1f;
+    m.roughness = 0.1f;
     m.emissiveColor = glm::vec3(0.f);
     m.emissiveTex = -1;
     m.emissiveStrength = 0.f;
@@ -106,9 +106,14 @@ struct Camera
 struct RenderState
 {
     Camera camera;
-    unsigned int iterations;
+
+    unsigned int beautyIters; 
+    unsigned int aovIters; 
+
     int traceDepth;
-    std::vector<glm::vec3> image;
+    std::vector<glm::vec3> beauty;
+    std::vector<glm::vec3> normal; 
+    std::vector<glm::vec3> albedo;
     std::string imageName;
 };
 

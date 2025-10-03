@@ -182,7 +182,8 @@ void Scene::loadFromJSON(const std::string& jsonName)
     camera.resolution.x = cameraData["RES"][0];
     camera.resolution.y = cameraData["RES"][1];
     float fovy = cameraData["FOVY"];
-    state.iterations = cameraData["ITERATIONS"];
+    state.beautyIters = (cameraData.contains("ITERATIONS")) ? cameraData["ITERATIONS"] : DEFAULT_ITERS; 
+    state.aovIters = (cameraData.contains("AOV_ITERATIONS")) ? cameraData["AOV_ITERATIONS"] : DEFAULT_ITERS; 
     state.traceDepth = cameraData["DEPTH"];
     state.imageName = cameraData["FILE"];
     const auto& pos = cameraData["EYE"];
@@ -205,6 +206,8 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
     //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;
-    state.image.resize(arraylen);
-    std::fill(state.image.begin(), state.image.end(), glm::vec3());
+    state.beauty.resize(arraylen);
+    state.normal.resize(arraylen); 
+    state.albedo.resize(arraylen); 
+    std::fill(state.beauty.begin(), state.beauty.end(), glm::vec3());
 }
