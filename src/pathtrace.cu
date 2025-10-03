@@ -25,6 +25,8 @@
 #include "gltf/gltf_structs.h"
 #include "gltf_loader.h"
 
+#define NORMAL
+
 
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm::vec3* image)
@@ -572,24 +574,17 @@ static void MaterialSortAndShade(
     }
 }
 
-/**
- * Wrapper for the __global__ call that sets up the kernel calls and does a ton
- * of memory management
- */
 void pathtrace(uchar4* pbo, int frame, int iter)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
-    
 
-    // 2D block for generating ray from camera
     const dim3 blockSize2d(8, 8);
     const dim3 blocksPerGrid2d(
         (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
         (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
-    // 1D block for path tracing
     const int blockSize1d = 128;
 
     generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
@@ -597,70 +592,70 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     int depth = 0;
     PathSegment* dev_path_end = dev_paths + pixelcount;
-    int numPaths = dev_path_end - dev_paths;
-
-    // --- PathSegment Tracing Stage ---
-    // Shoot ray into scene, bounce between objects, push shading chunks
+    int numPaths = static_cast<int>(dev_path_end - dev_paths);
 
     bool iterationComplete = false;
     while (!iterationComplete)
     {
-        // clean shading chunks
         cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
-        // tracing
         dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
-        ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d) (
+        ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
             depth,
             numPaths,
             dev_paths,
             dev_geoms,
-            hst_scene->geoms.size(),
+            static_cast<int>(hst_scene->geoms.size()),
             gltfScene,
-            dev_intersections
-        );
+            dev_intersections);
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
-        
-        // material sorting 
+
+#ifdef NORMAL
+        // normal-debug shading
+        {
+            const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
+            KernShadeNormal KERNEL_ARGS2(blocksAll, blockSize1d)(
+                iter,
+                numPaths,
+                dev_intersections,
+                dev_paths);
+            checkCUDAError("shade normals");
+        }
+#else
+        // regular shading path
         if (g_settings.enableMaterialSorting) {
             MaterialSortAndShade(iter, numPaths, blockSize1d,
                 dev_intersections, dev_paths, dev_materials,
                 dev_startIdx, dev_endIdx, hst_startIdx, hst_endIdx);
         }
-        else { 
-            // use all in one solution for shading 
+        else {
             const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
             KernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
                 iter,
                 numPaths,
                 dev_intersections,
                 dev_paths,
-                dev_materials, 
+                dev_materials,
                 dev_textures,
-                *envMap
-                );
+                *envMap);
         }
-        
+#endif
         if (g_settings.enableStreamCompaction) {
             PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + numPaths, is_active());
             numPaths = static_cast<int>(mid - dev_paths);
         }
-        
-        iterationComplete = (numPaths == 0 || ++depth > traceDepth); 
-        guiData ? guiData->TracedDepth = depth : 0;
+
+        iterationComplete = (numPaths == 0 || ++depth > traceDepth);
+        if (guiData) guiData->TracedDepth = depth;
+
     }
 
-    // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
     finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_image, dev_paths);
 
-    ///////////////////////////////////////////////////////////////////////////
-
-    // Send results to OpenGL buffer for rendering
     sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_image);
 
-    // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 

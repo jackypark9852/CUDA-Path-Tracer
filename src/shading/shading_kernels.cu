@@ -49,6 +49,13 @@ __global__ void KernShadeError(int iter, int n, ShadeableIntersection* s, PathSe
     if (idx < n) ShadeErrorImpl(iter, idx, s, p);
 }
 
+// outputs the normal and terminates the ray
+__global__ void KernShadeNormal(int iter, int n, ShadeableIntersection* s, PathSegment* p) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) ShadeNormalImpl(iter, idx, s, p);
+}
+
+
 // single-pass kernel that dispatches per-material shading
 __global__ void KernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D* t, cpt::Texture2D envMap) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;

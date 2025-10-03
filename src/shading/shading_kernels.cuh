@@ -396,6 +396,20 @@ DEVICE_INLINE void ShadeErrorImpl(
     seg->shouldTerminate = true;
 }
 
+DEVICE_INLINE void ShadeNormalImpl(
+    int iter, int idx,
+    ShadeableIntersection* s,
+    PathSegment* p)
+{
+    ShadeableIntersection* isect = s + idx;
+    PathSegment* seg = p + idx;
+    const glm::vec3 n = isect->surfaceNormal;
+    glm::vec3 c = 0.5f * (n + glm::vec3(1.0f));
+    c = glm::clamp(c, glm::vec3(0.0f), glm::vec3(1.0f));
+    seg->color = (isect->t > 0.0f)? c : glm::vec3(0.f);
+    seg->shouldTerminate = true;
+}
+
 __global__ void KernShadeEmissive(
     int iter, int n,
     ShadeableIntersection* s,
@@ -437,6 +451,11 @@ __global__ void KernShadeError(
     int iter, int n,
     ShadeableIntersection* s,
     PathSegment* p);
+
+__global__ void KernShadeNormal(
+    int iter, int n,
+    ShadeableIntersection* s,
+    PathSegment* p); 
 
 __global__ void KernShadeAllMaterials(
     int iter, int num_paths,
