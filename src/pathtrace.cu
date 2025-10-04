@@ -27,29 +27,61 @@
 
 //#define NORMAL
 
+__device__ __forceinline__ float linear_to_srgb_f(float x) {
+    x = fmaxf(x, 0.0f);
+    return (x <= 0.0031308f) ? (12.92f * x)
+        : (1.055f * powf(x, 1.0f / 2.4f) - 0.055f);
+}
+
+__device__ __forceinline__ glm::vec3 aces_v3(glm::vec3 x) {
+    const float a = 2.51f, b = 0.03f, c = 2.43f, d = 0.59f, e = 0.14f;
+    glm::vec3 num = x * (a * x + b);
+    glm::vec3 den = x * (c * x + d) + e;
+    glm::vec3 y = num / den;
+    return glm::clamp(y, 0.0f, 1.0f);
+}
+
+__device__ __forceinline__ glm::vec3 reinhard_v3(glm::vec3 c, float exposure = 1.0f) {
+    c *= exposure;
+    c = c / (glm::vec3(1.0f) + c);
+    return glm::clamp(c, 0.0f, 1.0f);
+}
+
+__device__ __forceinline__ glm::vec3 to_display_v3(glm::vec3 c) {
+    // aces tonemap, then srgb oetf
+    c = aces_v3(c);
+    return glm::vec3(
+        linear_to_srgb_f(c.x),
+        linear_to_srgb_f(c.y),
+        linear_to_srgb_f(c.z)
+    );
+}
+
+__device__ __forceinline__ unsigned char to_u8(float x) {
+    x = fminf(fmaxf(x, 0.0f), 1.0f);
+    return static_cast<unsigned char>(x * 255.0f + 0.5f);
+}
 
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm::vec3* image)
 {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+    if (x >= resolution.x || y >= resolution.y) return;
 
-    if (x < resolution.x && y < resolution.y)
-    {
-        int index = x + (y * resolution.x);
-        glm::vec3 pix = image[index];
+    int index = x + y * resolution.x;
 
-        glm::ivec3 color;
-        color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
-        color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
-        color.z = glm::clamp((int)(pix.z / iter * 255.0), 0, 255);
+    // average then display-map
+    glm::vec3 lin  = image[index] / float(iter);
+    glm::vec3 disp = to_display_v3(lin);
 
-        // Each thread writes one pixel location in the texture (textel)
-        pbo[index].w = 0;
-        pbo[index].x = color.x;
-        pbo[index].y = color.y;
-        pbo[index].z = color.z;
-    }
+    uchar4 out;
+    out.x = to_u8(disp.x);
+    out.y = to_u8(disp.y);
+    out.z = to_u8(disp.z);
+    out.w = 255; // opaque
+
+    pbo[index] = out;
 }
 
 static Scene* hst_scene = NULL;
