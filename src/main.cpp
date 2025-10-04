@@ -449,7 +449,8 @@ void saveImages()
     }
 
     std::vector<glm::vec3> beautyDenoised;
-    OptixDenoiseVectors(w, h, beautyAvg, beautyDenoised, &normalAvg);
+    float denoiseBlend = 0.3f; 
+    OptixDenoiseVectors(w, h, beautyAvg, beautyDenoised, &normalAvg, &albedoAvg);
 
     std::vector<glm::vec3> beautyDisp(w * h);
     std::vector<glm::vec3> beautyDenoisedDisp(w * h);
