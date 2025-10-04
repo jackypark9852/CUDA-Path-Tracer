@@ -1,0 +1,8 @@
+Model Information:
+* title:	Television 11
+* source:	https://sketchfab.com/3d-models/television-11-a2d62b491e8948a59d6447bf828b4580
+* author:	Prince Obrymec (https://sketchfab.com/prince-obrymec)
+
+Model License:
+* license type:	SKETCHFAB Standard (https://sketchfab.com/licenses)
+* requirements:	Under basic restrictions, use worldwide, on all types of media, commercially or not, and in all types of derivative works

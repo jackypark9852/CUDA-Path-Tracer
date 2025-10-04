@@ -475,6 +475,7 @@ __global__ void ComputeIntersections(
         intersections[path_index].materialId = geoms[hs.hitGeomIdx].materialid;
         intersections[path_index].materialType = geoms[hs.hitGeomIdx].materialType;
         intersections[path_index].surfaceNormal = hs.nWs;
+        branchlessONB(intersections[path_index].surfaceNormal, intersections[path_index].tangentWs, intersections[path_index].bitangentWs);
         intersections[path_index].uv = glm::vec2(0.f);
         return;
     }
@@ -485,6 +486,7 @@ __global__ void ComputeIntersections(
             deviceGltfScene.meshes[hs.hitMeshIdx].primitives[hs.hitPrimIdx].materialIndex;
         intersections[path_index].materialType = MaterialType::PBR;
         intersections[path_index].surfaceNormal = hs.nWs;
+        branchlessONB(intersections[path_index].surfaceNormal, intersections[path_index].tangentWs, intersections[path_index].bitangentWs);
         intersections[path_index].uv = hs.uv;
         return;
     }
@@ -711,6 +713,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
                 iter,
                 numPaths,
                 dev_intersections,
+                dev_materials, 
+                dev_textures,
                 dev_paths);
             checkCUDAError("shade normals");
         }
@@ -794,6 +798,8 @@ void normalPass(int iterCount)
             iter,
             numPaths,
             dev_intersections,
+            dev_materials, 
+            dev_textures,
             dev_paths);
         checkCUDAError("shade normals");
 

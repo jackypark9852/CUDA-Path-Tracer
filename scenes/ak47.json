@@ -1,0 +1,32 @@
+{
+    "Materials":
+    {
+        "diffuse_white":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.729, 0.729, 0.729]
+        }
+    },
+    
+    "Camera":
+    {
+        "RES":[800, 800],
+        "FOVY":45.0,
+        "ITERATIONS":200,
+        "DEPTH":5,
+        "FILE":"ak47",
+        "EYE":[0.0,5.0,10.5],
+        "LOOKAT":[0.0,5.0,0.0],
+        "UP":[0.0,1.0,0.0]
+    },
+    
+
+    "Imports": [
+        { "PATH": "./models/ak-47/scene.gltf", "TRANS": [0.0, 3.0, 0.0], "ROTAT": [0.0, 90.0, 0.0], "SCALE": [1, 1, 1]}
+    ],
+    
+    "EnvironmentMap":
+    {
+        "Path": "./textures/brown_photostudio_02_4k.hdr"
+    }
+}

@@ -75,37 +75,3 @@ __device__ __forceinline__ bool HasEmissiveTex(const Material* mat) {
 __device__ __forceinline__ glm::vec3 MakeVec3(float4 c) {
     return glm::vec3(c.x, c.y, c.z);
 }
-
-// sample base color: uses texture if present, else constant
-__device__ __forceinline__ glm::vec3 SampleBaseColor(const Material* mat, const cpt::Texture2D* textures, const glm::vec2& uv) {
-    if (HasBaseColorTex(mat)) {
-        cudaTextureObject_t texObj = textures[mat->baseColorTex].texObj; 
-        float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
-        return MakeVec3(texel);
-    }
-    return mat->baseColor;
-}
-
-// sample roughness: uses texture if present, else constant
-__device__ __forceinline__ glm::vec3 SampleRoughness(const Material* mat, const cpt::Texture2D* textures, const glm::vec2& uv) {
-    if (HasMetallicRoughnessTex(mat)) {
-        glm::vec3 roughness(1.f);
-        cudaTextureObject_t texObj = textures[mat->metallicRoughnessTex].texObj;
-        float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
-        roughness *= texel.y; 
-        return roughness;
-    }
-    return glm::vec3(mat->roughness);
-}
-
-// sample metallic: uses texture if present, else constant
-__device__ __forceinline__ glm::vec3 SampleMetallic(const Material* mat, const cpt::Texture2D* textures, const glm::vec2& uv) {
-    if (HasMetallicRoughnessTex(mat)) {
-        glm::vec3 metallic(1.f);
-        cudaTextureObject_t texObj = textures[mat->metallicRoughnessTex].texObj;
-        float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
-        metallic *= texel.z;
-        return metallic;
-    }
-    return glm::vec3(mat->metallic);
-}

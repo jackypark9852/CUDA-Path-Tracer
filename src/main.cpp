@@ -448,18 +448,17 @@ void saveImages()
         metallicAvg[i] = renderState->metallic[i] / static_cast<float>(renderState->aovIters);
     }
 
-    std::vector<glm::vec3> beautyDenoised;
-    float denoiseBlend = 0.3f; 
-    OptixDenoiseVectors(w, h, beautyAvg, beautyDenoised, &normalAvg, &albedoAvg);
-
     std::vector<glm::vec3> beautyDisp(w * h);
-    std::vector<glm::vec3> beautyDenoisedDisp(w * h);
 
     for (int i = 0; i < w * h; ++i) {
         beautyDisp[i] = to_display(beautyAvg[i]);
-        beautyDenoisedDisp[i] = to_display(beautyDenoised[i]);
     }
 
+    std::vector<glm::vec3> beautyDenoisedDisp(w * h);
+    float denoiseBlend = 0.1f; 
+    OptixDenoiseVectors(w, h, beautyDisp, beautyDenoisedDisp, &normalAvg, &albedoAvg);
+
+    
     Image imgBeauty(w, h);
     Image imgNormal(w, h);
     Image imgAlbedo(w, h); 

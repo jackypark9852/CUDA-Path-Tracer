@@ -12,47 +12,47 @@
 #include "shading_common.cuh" 
 
 // each kernel shades one material type
-__global__ void KernShadeEmissive(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void KernShadeEmissive(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, Material* materials) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeEmissiveImpl(iter, idx, s, p, m);
+    if (idx < n) ShadeEmissiveImpl(iter, idx, intersections, pathSegments, materials);
 }
 
-__global__ void KernShadeDiffuse(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void KernShadeDiffuse(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, Material* materials) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeDiffuseImpl(iter, idx, s, p, m);
+    if (idx < n) ShadeDiffuseImpl(iter, idx, intersections, pathSegments, materials);
 }
 
-__global__ void KernShadeSpecular(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void KernShadeSpecular(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, Material* materials) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeSpecularImpl(iter, idx, s, p, m);
+    if (idx < n) ShadeSpecularImpl(iter, idx, intersections, pathSegments, materials);
 }
 
-__global__ void KernShadeTransmissive(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m) {
+__global__ void KernShadeTransmissive(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, Material* materials) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeTransmissiveImpl(iter, idx, s, p, m);
+    if (idx < n) ShadeTransmissiveImpl(iter, idx, intersections, pathSegments, materials);
 }
 
-__global__ void KernShadePbr(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D* t) {
+__global__ void KernShadePbr(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, Material* materials, cpt::Texture2D* textures) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadePbrImpl(iter, idx, s, p, m, t);
+    if (idx < n) ShadePbrImpl(iter, idx, intersections, pathSegments, materials, textures);
 }
 
 // shades environment for rays that missed; terminates the path
-__global__ void KernShadeEnvMap(int iter, int n, ShadeableIntersection* s, PathSegment* p, const cpt::Texture2D envMap) {
+__global__ void KernShadeEnvMap(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments, const cpt::Texture2D envMap) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeEnvMapImpl(iter, idx, s, p, envMap);
+    if (idx < n) ShadeEnvMapImpl(iter, idx, intersections, pathSegments, envMap);
 }
 
 // writes a magenta error color for unknown material types
-__global__ void KernShadeError(int iter, int n, ShadeableIntersection* s, PathSegment* p) {
+__global__ void KernShadeError(int iter, int n, ShadeableIntersection* intersections, PathSegment* pathSegments) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeErrorImpl(iter, idx, s, p);
+    if (idx < n) ShadeErrorImpl(iter, idx, intersections, pathSegments);
 }
 
 // outputs the normal and terminates the ray
-__global__ void KernShadeNormal(int iter, int n, ShadeableIntersection* s, PathSegment* p) {
+__global__ void KernShadeNormal(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) ShadeNormalImpl(iter, idx, s, p);
+    if (idx < n) ShadeNormalImpl(iter, idx, intersections, materials, textures, pathSegments);
 }
 
 // for albedo aov

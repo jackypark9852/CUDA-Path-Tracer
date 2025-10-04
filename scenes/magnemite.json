@@ -22,7 +22,7 @@
     
 
     "Imports": [
-        { "PATH": "./models/pokemon_magnemite/scene.gltf", "TRANS": [0.0, 3.0, 0.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [0.3, 0.3, 0.3]}
+        { "PATH": "./models/pokemon_magnemite/scene.gltf", "TRANS": [0.0, 3.0, 0.0], "ROTAT": [0.0, 180.0, 0.0], "SCALE": [0.3, 0.3, 0.3]}
     ],
     
     "EnvironmentMap":

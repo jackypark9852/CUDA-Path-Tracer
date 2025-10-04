@@ -206,17 +206,17 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
     float metallic = SampleMetallic(mat, textures, isect->uv).x; 
     float roughness = SampleRoughness(mat, textures, isect->uv).x; 
+    glm::vec3 normal = ApplyNormalMap(mat, textures, isect);
 
     // uses local frame (+z = normal) for microfacet math
-    glm::vec3 n = glm::normalize(isect->surfaceNormal);
     glm::vec3 woWorld = glm::normalize(-seg->ray.direction);
-    glm::vec3 woLocal; worldToLocal(n, woWorld, woLocal);
+    glm::vec3 woLocal; worldToLocal(normal, woWorld, woLocal);
 
     // dielectric f0 from ior; blend toward baseColor if metallic
     glm::vec3 F0_dielectric = F0FromIOR(mat->ior);
     glm::vec3 F0 = glm::mix(F0_dielectric, baseColor, metallic);
 
-    float NdotV = fmaxf(glm::dot(n, woWorld), 0.f);
+    float NdotV = fmaxf(glm::dot(normal, woWorld), 0.f);
     glm::vec3 Fv = FresnelSchlick(F0, NdotV);
     float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
     float alpha = roughness * roughness;
@@ -246,13 +246,13 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     float xi = u01(rng);
     // diffuse lobe (cosine-weighted in world space)
     if (xi < pDiffuse) {
-        glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
+        glm::vec3 wi = CalculateRandomDirectionInHemisphere(normal, rng);
         wi = glm::normalize(wi);
 
-        float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
+        float NdotL = fmaxf(glm::dot(normal, wi), 0.0f);
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
         
-        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
+        glm::vec3 fd = (1.f - metallic) * fdFr * LambertBRDF(baseColor);
 
         sample.incomingDir = wi;                     // world space
         sample.bsdfValue = fd;                     // brdf value
@@ -266,7 +266,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         float pdfLobe = 0.f;
 
         glm::vec3 fSpec = SampleMicrofacetReflVNDF(
-            F0, n, woLocal, alpha, u01(rng), u01(rng), wiWorld, pdfLobe);
+            F0, normal, woLocal, alpha, u01(rng), u01(rng), wiWorld, pdfLobe);
 
         sample.incomingDir = glm::normalize(wiWorld);
         sample.bsdfValue = fSpec;
@@ -276,7 +276,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     }
     else if (xi < pDiffuse + pRefl + pTrans) {
         SmoothRefractSample g = SampleSmoothRefractOnly(
-            glm::normalize(isect->surfaceNormal),
+            normal,
             woWorld,
             mat->ior
         );
@@ -291,9 +291,9 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
     // Multiple scattering compensation
     else {
-        glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
+        glm::vec3 wi = CalculateRandomDirectionInHemisphere(normal, rng);
         wi = glm::normalize(wi);
-        float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
+        float NdotL = fmaxf(glm::dot(normal, wi), 0.0f);
         glm::vec3 msTint = MicrofacetMSTint(baseColor, metallic); 
         glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);
 
@@ -307,14 +307,14 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
 DEVICE_INLINE void ShadePbrImpl(
     int iter, int idx,
-    ShadeableIntersection* s,
-    PathSegment* p,
-    Material* m,
-    cpt::Texture2D* t)
+    ShadeableIntersection* intersections,
+    PathSegment* pathSegments,
+    Material* materials,
+    cpt::Texture2D* textures)
 {
-    ShadeableIntersection* isect = s + idx;
-    PathSegment* seg = p + idx;
-    Material* mat = m + isect->materialId;
+    ShadeableIntersection* isect = intersections + idx;
+    PathSegment* seg = pathSegments + idx;
+    Material* mat = materials + isect->materialId;
     
     if (seg->shouldTerminate) return;
 
@@ -328,9 +328,9 @@ DEVICE_INLINE void ShadePbrImpl(
     thrust::default_random_engine rng =
         MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
 
-    BSDFSample sample = SampleBSDF(isect, seg, mat, t, rng);
+    BSDFSample sample = SampleBSDF(isect, seg, mat, textures, rng);
 
-    glm::vec3 nW = glm::normalize(isect->surfaceNormal);
+    glm::vec3 nW = ApplyNormalMap(mat, textures, isect); 
     glm::vec3 wi = glm::normalize(sample.incomingDir);
     float pdf = sample.pdf;
     glm::vec3 f = sample.bsdfValue;
@@ -400,11 +400,14 @@ DEVICE_INLINE void ShadeErrorImpl(
 DEVICE_INLINE void ShadeNormalImpl(
     int iter, int idx,
     ShadeableIntersection* intersections,
+    Material* materials, 
+    cpt::Texture2D* textures, 
     PathSegment* pathSegments)
 {
     ShadeableIntersection* isect = intersections + idx;
+    Material* mat = materials + isect->materialId;
     PathSegment* seg = pathSegments + idx;
-    const glm::vec3 n = isect->surfaceNormal;
+    const glm::vec3 n = ApplyNormalMap(mat, textures, isect);
     glm::vec3 c = 0.5f * (n + glm::vec3(1.0f));
     c = glm::clamp(c, glm::vec3(0.0f), glm::vec3(1.0f));
     seg->color = (isect->t > 0.0f)? c : glm::vec3(1.0f);
@@ -422,7 +425,6 @@ DEVICE_INLINE void ShadeAlbedoImpl(
     PathSegment* seg = pathSegments + idx;
     Material* mat = materials + isect->materialId;
 
-    const glm::vec3 n = isect->surfaceNormal;
     glm::vec3 c = SampleBaseColor(mat, textures, isect->uv);
     seg->color = (isect->t > 0.0f) ? c : glm::vec3(0.0f);
     seg->shouldTerminate = true;
@@ -503,33 +505,32 @@ __global__ void KernShadeError(
     PathSegment* p);
 
 __global__ void KernShadeNormal(
-    int iter, int n,
-    ShadeableIntersection* s,
-    PathSegment* p); 
+    int iter, int n, 
+    ShadeableIntersection* intersections, 
+    Material* materials, 
+    cpt::Texture2D* textures, 
+    PathSegment* pathSegments); 
 
 __global__ void KernShadeAlbedo(
     int iter, int n,
     ShadeableIntersection* intersections,
     Material* materials,
     cpt::Texture2D* textures,
-    PathSegment* pathSegments
-);
+    PathSegment* pathSegments);
 
 __global__ void KernShadeRoughness(
     int iter, int n,
     ShadeableIntersection* intersections,
     Material* materials,
     cpt::Texture2D* textures,
-    PathSegment* pathSegments
-);
+    PathSegment* pathSegments);
 
 __global__ void KernShadeMetallic(
     int iter, int n,
     ShadeableIntersection* intersections,
     Material* materials,
     cpt::Texture2D* textures,
-    PathSegment* pathSegments
-);
+    PathSegment* pathSegments);
 
 __global__ void KernShadeAllMaterials(
     int iter, int num_paths,

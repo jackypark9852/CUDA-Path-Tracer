@@ -1,0 +1,11 @@
+Model Information:
+* title:	AK-47
+* source:	https://sketchfab.com/3d-models/ak-47-d8e6c8c4d86c4ed8ba6d542a3b34b71c
+* author:	cruel1 (https://sketchfab.com/tepeugur08)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "AK-47" (https://sketchfab.com/3d-models/ak-47-d8e6c8c4d86c4ed8ba6d542a3b34b71c) by cruel1 (https://sketchfab.com/tepeugur08) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
