@@ -203,6 +203,10 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     BSDFSample sample{}; sample.pdf = 0.f;
     thrust::uniform_real_distribution<float> u01(0, 1);
 
+    glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
+    float metallic = SampleMetallic(mat, textures, isect->uv).x; 
+    float roughness = SampleRoughness(mat, textures, isect->uv).x; 
+
     // uses local frame (+z = normal) for microfacet math
     glm::vec3 n = glm::normalize(isect->surfaceNormal);
     glm::vec3 woWorld = glm::normalize(-seg->ray.direction);
@@ -210,20 +214,20 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
     // dielectric f0 from ior; blend toward baseColor if metallic
     glm::vec3 F0_dielectric = F0FromIOR(mat->ior);
-    glm::vec3 F0 = glm::mix(F0_dielectric, mat->baseColor, mat->metallic);
+    glm::vec3 F0 = glm::mix(F0_dielectric, baseColor, metallic);
 
     float NdotV = fmaxf(glm::dot(n, woWorld), 0.f);
     glm::vec3 Fv = FresnelSchlick(F0, NdotV);
     float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
-    float alpha = mat->roughness * mat->roughness;
+    float alpha = roughness * roughness;
 
     // transmission params
-    const bool transmissive = (mat->metallic < EPSILON && mat->transmission > 0.0f);
+    const bool transmissive = (metallic < EPSILON && mat->transmission > 0.0f);
     float etaI = 1.0f, etaT = mat->ior;
     if (woLocal.z < 0.f) { etaI = mat->ior; etaT = 1.0f; } // outside or inside
 
     // lobe weights: diffuse suppressed by fresnel and metallic, specular by fresnel
-    float wDiffuse = (1.f - mat->metallic) * (1.f - mat->transmission) * (1.f - F_avg);
+    float wDiffuse = (1.f - metallic) * (1.f - mat->transmission) * (1.f - F_avg);
     float wRefl = F_avg;    
     float wMS = (transmissive)? 0.0f : MicrofacetMSWeight(alpha, F_avg);
     float wTrans = transmissive ? (1.f - F_avg) : 0.f; // transmission is complementary to 
@@ -241,27 +245,23 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
     float xi = u01(rng);
     // diffuse lobe (cosine-weighted in world space)
-    //if (xi < pDiffuse) {
+    if (xi < pDiffuse) {
         glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
         wi = glm::normalize(wi);
 
         float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
         
-        glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
-        //glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
-        glm::vec3 fd = fdFr * LambertBRDF(baseColor);
+        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
 
         sample.incomingDir = wi;                     // world space
         sample.bsdfValue = fd;                     // brdf value
-        //sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
-        sample.pdf = LambertPDF(NdotL); // include mixture weight
+        sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
         sample.isDelta = false;
         return sample;
-    /* }
+    }
     // specular reflection lobe sampled via vndf
     else if (xi < pDiffuse + pRefl) {
-        float alpha = mat->roughness * mat->roughness;
         glm::vec3 wiWorld;
         float pdfLobe = 0.f;
 
@@ -294,7 +294,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
         wi = glm::normalize(wi);
         float NdotL = fmaxf(glm::dot(n, wi), 0.0f);
-        glm::vec3 msTint = MicrofacetMSTint(mat->baseColor, mat->metallic); 
+        glm::vec3 msTint = MicrofacetMSTint(baseColor, metallic); 
         glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);
 
         sample.incomingDir = wi;
@@ -303,7 +303,6 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         sample.isDelta = false;
         return sample;
     }
-    */
 }
 
 DEVICE_INLINE void ShadePbrImpl(
