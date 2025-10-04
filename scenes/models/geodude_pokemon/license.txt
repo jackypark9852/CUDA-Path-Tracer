@@ -1,0 +1,11 @@
+Model Information:
+* title:	Geodude Pokemon
+* source:	https://sketchfab.com/3d-models/geodude-pokemon-c8e3ae87639a4ab0b43393d285012e2b
+* author:	3dlogicus (https://sketchfab.com/3dlogicus)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Geodude Pokemon" (https://sketchfab.com/3d-models/geodude-pokemon-c8e3ae87639a4ab0b43393d285012e2b) by 3dlogicus (https://sketchfab.com/3dlogicus) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

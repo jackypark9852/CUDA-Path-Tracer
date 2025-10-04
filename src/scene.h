@@ -5,7 +5,7 @@
 #include "texture.h"
 #include <vector>
 
-#define DEFAULT_ITERS 100
+#define DEFAULT_ITERS 1
 
 class Scene
 {

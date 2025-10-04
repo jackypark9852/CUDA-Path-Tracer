@@ -437,9 +437,15 @@ void saveImages()
 
     std::vector<glm::vec3> beautyAvg(renderState->beauty.size());
     std::vector<glm::vec3> normalAvg(renderState->normal.size());
+    std::vector<glm::vec3> albedoAvg(renderState->albedo.size());
+    std::vector<glm::vec3> roughnessAvg(renderState->roughness.size()); 
+    std::vector<glm::vec3> metallicAvg(renderState->metallic.size());
     for (int i = 0; i < w * h; ++i) {
         beautyAvg[i] = renderState->beauty[i] / samples;
         normalAvg[i] = renderState->normal[i] / static_cast<float>(renderState->aovIters);
+        albedoAvg[i] = renderState->albedo[i] / static_cast<float>(renderState->aovIters);
+        roughnessAvg[i] = renderState->roughness[i] / static_cast<float>(renderState->aovIters);
+        metallicAvg[i] = renderState->metallic[i] / static_cast<float>(renderState->aovIters);
     }
 
     std::vector<glm::vec3> beautyDenoised;
@@ -447,18 +453,26 @@ void saveImages()
 
     std::vector<glm::vec3> beautyDisp(w * h);
     std::vector<glm::vec3> beautyDenoisedDisp(w * h);
+    std::vector<glm::vec3> albedoDisp(w * h); 
 
     for (int i = 0; i < w * h; ++i) {
         beautyDisp[i] = to_display(beautyAvg[i]);
         beautyDenoisedDisp[i] = to_display(beautyDenoised[i]);
+        albedoDisp[i] = to_display(albedoAvg[i]); 
     }
 
     Image imgBeauty(w, h);
     Image imgNormal(w, h);
+    Image imgAlbedo(w, h); 
+    Image imgRoughness(w, h); 
+    Image imgMetallic(w, h);
     Image imgBeautyDenoised(w, h);
 
     FillImage(imgBeauty, w, h, beautyDisp);
     FillImage(imgNormal, w, h, normalAvg);
+    FillImage(imgAlbedo, w, h, albedoDisp); 
+    FillImage(imgRoughness, w, h, roughnessAvg);
+    FillImage(imgMetallic, w, h, metallicAvg);
     FillImage(imgBeautyDenoised, w, h, beautyDenoisedDisp);
 
     namespace fs = std::filesystem;
@@ -469,6 +483,9 @@ void saveImages()
 
     imgBeauty.savePNG((outDir / "beauty.png").string());
     imgNormal.savePNG((outDir / "normal.png").string());
+    imgAlbedo.savePNG((outDir / "albedo.png").string()); 
+    imgRoughness.savePNG((outDir / "roughness.png").string());
+    imgMetallic.savePNG((outDir / "metallic.png").string());
     imgBeautyDenoised.savePNG((outDir / "beauty_denoised.png").string());
 }
 
@@ -520,6 +537,9 @@ void runCuda()
     else
     {
         normalPass(renderState->aovIters);
+        albedoPass(renderState->aovIters);
+        roughnessPass(renderState->aovIters); 
+        metallicPass(renderState->aovIters); 
         saveImages();
         pathtraceFree();
         cudaDeviceReset();

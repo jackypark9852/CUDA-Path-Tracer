@@ -55,6 +55,45 @@ __global__ void KernShadeNormal(int iter, int n, ShadeableIntersection* s, PathS
     if (idx < n) ShadeNormalImpl(iter, idx, s, p);
 }
 
+// for albedo aov
+__global__ void KernShadeAlbedo(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) ShadeAlbedoImpl(
+        iter, 
+        idx,
+        intersections, 
+        materials,
+        textures, 
+        pathSegments);
+}
+
+// for albedo aov
+__global__ void KernShadeRoughness(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) ShadeRoughnessImpl(
+        iter,
+        idx,
+        intersections,
+        materials,
+        textures,
+        pathSegments);
+}
+
+// for albedo aov
+__global__ void KernShadeMetallic(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) ShadeMetallicImpl(
+        iter,
+        idx,
+        intersections,
+        materials,
+        textures,
+        pathSegments);
+}
+
 
 // single-pass kernel that dispatches per-material shading
 __global__ void KernShadeAllMaterials(int iter, int n, ShadeableIntersection* s, PathSegment* p, Material* m, cpt::Texture2D* t, cpt::Texture2D envMap) {

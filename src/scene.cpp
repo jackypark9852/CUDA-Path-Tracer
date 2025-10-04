@@ -209,5 +209,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     state.beauty.resize(arraylen);
     state.normal.resize(arraylen); 
     state.albedo.resize(arraylen); 
+    state.roughness.resize(arraylen); 
+    state.metallic.resize(arraylen); 
     std::fill(state.beauty.begin(), state.beauty.end(), glm::vec3());
 }

@@ -50,8 +50,8 @@ inline Material MakeDefaultMaterial() {
     Material m{};
     m.type = MaterialType::PBR;
     m.baseColor = glm::vec3(0.063f, 0.024f, 0.624f);
-    m.metallic = 0.1f;
-    m.roughness = 0.1f;
+    m.metallic = 0.0f;
+    m.roughness = 1.0f;
     m.emissiveColor = glm::vec3(0.f);
     m.emissiveTex = -1;
     m.emissiveStrength = 0.f;
@@ -114,6 +114,8 @@ struct RenderState
     std::vector<glm::vec3> beauty;
     std::vector<glm::vec3> normal; 
     std::vector<glm::vec3> albedo;
+    std::vector<glm::vec3> roughness;
+    std::vector<glm::vec3> metallic; 
     std::string imageName;
 };
 

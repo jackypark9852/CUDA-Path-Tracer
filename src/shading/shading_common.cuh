@@ -85,3 +85,27 @@ __device__ __forceinline__ glm::vec3 SampleBaseColor(const Material* mat, const 
     }
     return mat->baseColor;
 }
+
+// sample roughness: uses texture if present, else constant
+__device__ __forceinline__ glm::vec3 SampleRoughness(const Material* mat, const cpt::Texture2D* textures, const glm::vec2& uv) {
+    if (HasMetallicRoughnessTex(mat)) {
+        glm::vec3 roughness(1.f);
+        cudaTextureObject_t texObj = textures[mat->metallicRoughnessTex].texObj;
+        float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
+        roughness *= texel.y; 
+        return roughness;
+    }
+    return glm::vec3(mat->roughness);
+}
+
+// sample metallic: uses texture if present, else constant
+__device__ __forceinline__ glm::vec3 SampleMetallic(const Material* mat, const cpt::Texture2D* textures, const glm::vec2& uv) {
+    if (HasMetallicRoughnessTex(mat)) {
+        glm::vec3 metallic(1.f);
+        cudaTextureObject_t texObj = textures[mat->metallicRoughnessTex].texObj;
+        float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
+        metallic *= texel.x;
+        return metallic;
+    }
+    return glm::vec3(mat->metallic);
+}

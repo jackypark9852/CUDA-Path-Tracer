@@ -641,7 +641,7 @@ namespace {
     {
         outM.type = MaterialType::PBR;
         outM.baseColor = glm::vec3(1.f);
-        outM.metallic = 1.f;
+        outM.metallic = 0.f;
         outM.roughness = 1.f;
         outM.emissiveColor = glm::vec3(0.f);
         outM.emissiveTex = -1;

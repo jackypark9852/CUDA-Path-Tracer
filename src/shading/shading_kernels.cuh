@@ -241,7 +241,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
 
     float xi = u01(rng);
     // diffuse lobe (cosine-weighted in world space)
-    if (xi < pDiffuse) {
+    //if (xi < pDiffuse) {
         glm::vec3 wi = CalculateRandomDirectionInHemisphere(n, rng);
         wi = glm::normalize(wi);
 
@@ -249,14 +249,16 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
         
         glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
-        glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
+        //glm::vec3 fd = (1.f - mat->metallic) * fdFr * LambertBRDF(baseColor);
+        glm::vec3 fd = fdFr * LambertBRDF(baseColor);
 
         sample.incomingDir = wi;                     // world space
         sample.bsdfValue = fd;                     // brdf value
-        sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
+        //sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
+        sample.pdf = LambertPDF(NdotL); // include mixture weight
         sample.isDelta = false;
         return sample;
-    }
+    /* }
     // specular reflection lobe sampled via vndf
     else if (xi < pDiffuse + pRefl) {
         float alpha = mat->roughness * mat->roughness;
@@ -273,7 +275,6 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         return sample;
     }
     else if (xi < pDiffuse + pRefl + pTrans) {
-        // TODO: implement MicrofacetBTDF
         SmoothRefractSample g = SampleSmoothRefractOnly(
             glm::normalize(isect->surfaceNormal),
             woWorld,
@@ -302,6 +303,7 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         sample.isDelta = false;
         return sample;
     }
+    */
 }
 
 DEVICE_INLINE void ShadePbrImpl(
@@ -398,15 +400,64 @@ DEVICE_INLINE void ShadeErrorImpl(
 
 DEVICE_INLINE void ShadeNormalImpl(
     int iter, int idx,
-    ShadeableIntersection* s,
-    PathSegment* p)
+    ShadeableIntersection* intersections,
+    PathSegment* pathSegments)
 {
-    ShadeableIntersection* isect = s + idx;
-    PathSegment* seg = p + idx;
+    ShadeableIntersection* isect = intersections + idx;
+    PathSegment* seg = pathSegments + idx;
     const glm::vec3 n = isect->surfaceNormal;
     glm::vec3 c = 0.5f * (n + glm::vec3(1.0f));
     c = glm::clamp(c, glm::vec3(0.0f), glm::vec3(1.0f));
     seg->color = (isect->t > 0.0f)? c : glm::vec3(1.0f);
+    seg->shouldTerminate = true;
+}
+
+DEVICE_INLINE void ShadeAlbedoImpl(
+    int iter, int idx,
+    ShadeableIntersection* intersections,
+    Material* materials, 
+    cpt::Texture2D* textures, 
+    PathSegment* pathSegments)
+{
+    ShadeableIntersection* isect = intersections + idx;
+    PathSegment* seg = pathSegments + idx;
+    Material* mat = materials + isect->materialId;
+
+    const glm::vec3 n = isect->surfaceNormal;
+    glm::vec3 c = SampleBaseColor(mat, textures, isect->uv);
+    seg->color = (isect->t > 0.0f) ? c : glm::vec3(0.0f);
+    seg->shouldTerminate = true;
+}
+
+DEVICE_INLINE void ShadeRoughnessImpl(
+    int iter, int idx,
+    ShadeableIntersection* intersections,
+    Material* materials,
+    cpt::Texture2D* textures,
+    PathSegment* pathSegments)
+{
+    ShadeableIntersection* isect = intersections + idx;
+    PathSegment* seg = pathSegments + idx;
+    Material* mat = materials + isect->materialId;
+
+    glm::vec3 c = SampleRoughness(mat, textures, isect->uv);
+    seg->color = (isect->t > 0.0f) ? c : glm::vec3(1.0f);
+    seg->shouldTerminate = true;
+}
+
+DEVICE_INLINE void ShadeMetallicImpl(
+    int iter, int idx,
+    ShadeableIntersection* intersections,
+    Material* materials,
+    cpt::Texture2D* textures,
+    PathSegment* pathSegments)
+{
+    ShadeableIntersection* isect = intersections + idx;
+    PathSegment* seg = pathSegments + idx;
+    Material* mat = materials + isect->materialId;
+
+    glm::vec3 c = SampleMetallic(mat, textures, isect->uv);
+    seg->color = (isect->t > 0.0f) ? c : glm::vec3(1.0f);
     seg->shouldTerminate = true;
 }
 
@@ -457,10 +508,34 @@ __global__ void KernShadeNormal(
     ShadeableIntersection* s,
     PathSegment* p); 
 
+__global__ void KernShadeAlbedo(
+    int iter, int n,
+    ShadeableIntersection* intersections,
+    Material* materials,
+    cpt::Texture2D* textures,
+    PathSegment* pathSegments
+);
+
+__global__ void KernShadeRoughness(
+    int iter, int n,
+    ShadeableIntersection* intersections,
+    Material* materials,
+    cpt::Texture2D* textures,
+    PathSegment* pathSegments
+);
+
+__global__ void KernShadeMetallic(
+    int iter, int n,
+    ShadeableIntersection* intersections,
+    Material* materials,
+    cpt::Texture2D* textures,
+    PathSegment* pathSegments
+);
+
 __global__ void KernShadeAllMaterials(
     int iter, int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
-    cpt::Texture2D* t, 
+    cpt::Texture2D* textures, 
     const cpt::Texture2D envMap);
