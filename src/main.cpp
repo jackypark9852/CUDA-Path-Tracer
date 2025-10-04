@@ -453,12 +453,10 @@ void saveImages()
 
     std::vector<glm::vec3> beautyDisp(w * h);
     std::vector<glm::vec3> beautyDenoisedDisp(w * h);
-    std::vector<glm::vec3> albedoDisp(w * h); 
 
     for (int i = 0; i < w * h; ++i) {
         beautyDisp[i] = to_display(beautyAvg[i]);
         beautyDenoisedDisp[i] = to_display(beautyDenoised[i]);
-        albedoDisp[i] = to_display(albedoAvg[i]); 
     }
 
     Image imgBeauty(w, h);
@@ -470,7 +468,7 @@ void saveImages()
 
     FillImage(imgBeauty, w, h, beautyDisp);
     FillImage(imgNormal, w, h, normalAvg);
-    FillImage(imgAlbedo, w, h, albedoDisp); 
+    FillImage(imgAlbedo, w, h, albedoAvg); 
     FillImage(imgRoughness, w, h, roughnessAvg);
     FillImage(imgMetallic, w, h, metallicAvg);
     FillImage(imgBeautyDenoised, w, h, beautyDenoisedDisp);
