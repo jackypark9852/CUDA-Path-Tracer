@@ -104,7 +104,7 @@ __device__ __forceinline__ glm::vec3 SampleMetallic(const Material* mat, const c
         glm::vec3 metallic(1.f);
         cudaTextureObject_t texObj = textures[mat->metallicRoughnessTex].texObj;
         float4 texel = tex2D<float4>(texObj, uv.x, uv.y);
-        metallic *= texel.x;
+        metallic *= texel.z;
         return metallic;
     }
     return glm::vec3(mat->metallic);

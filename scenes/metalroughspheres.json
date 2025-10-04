@@ -14,7 +14,7 @@
         "FOVY":45.0,
         "ITERATIONS":1000,
         "DEPTH":12,
-        "FILE":"magnemite",
+        "FILE":"metalroughspheres",
         "EYE":[0.0,5.0,10.5],
         "LOOKAT":[0.0,5.0,0.0],
         "UP":[0.0,1.0,0.0]
@@ -22,7 +22,7 @@
     
 
     "Imports": [
-        { "PATH": "./models/pokemon_magnemite/scene.gltf", "TRANS": [0.0, 3.0, 0.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [0.3, 0.3, 0.3]}
+        { "PATH": "./models/MetalRoughSpheres/MetalRoughSpheresNoTextures.gltf", "TRANS": [0.0, 0.0, 0.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [1.0, 1.0,1.0]}
     ],
     
     "EnvironmentMap":
