@@ -162,35 +162,26 @@ DEVICE_INLINE glm::vec3 MicrofacetMSTint(const glm::vec3& baseColor, float metal
     return scale * baseColor;
 }
 
-// fresnel for dielectrics
-DEVICE_INLINE float FresnelDielectric(float cosThetaI, float etaI, float etaT) {
-    cosThetaI = fminf(fmaxf(cosThetaI, -1.f), 1.f);
-    bool entering = cosThetaI > 0.f;
-    if (!entering) { float tmp = etaI; etaI = etaT; etaT = tmp; cosThetaI = fabsf(cosThetaI); }
-    float sinThetaI = sqrtf(fmaxf(0.f, 1.f - cosThetaI * cosThetaI));
-    float sinThetaT = etaI / etaT * sinThetaI;
-    if (sinThetaT >= 1.f) return 1.f;
-    float cosThetaT = sqrtf(fmaxf(0.f, 1.f - sinThetaT * sinThetaT));
-    float rParl = ((etaT * cosThetaI) - (etaI * cosThetaT)) / ((etaT * cosThetaI) + (etaI * cosThetaT));
-    float rPerp = ((etaI * cosThetaI) - (etaT * cosThetaT)) / ((etaI * cosThetaI) + (etaT * cosThetaT));
-    return 0.5f * (rParl * rParl + rPerp * rPerp);
+// exact fresnel for real ior, unpolarized. handles brewster + tir.
+DEVICE_INLINE float FresnelDielectricExact(float cosThetaI, float etaI, float etaT, bool& tir)
+{
+    cosThetaI = fminf(fmaxf(cosThetaI, -1.0f), 1.0f);
+    float ei = etaI, et = etaT;
+    bool entering = cosThetaI > 0.0f;
+    if (!entering) { float tmp = ei; ei = et; et = tmp; cosThetaI = fabsf(cosThetaI); }
+
+    float sinThetaI = sqrtf(fmaxf(0.0f, 1.0f - cosThetaI * cosThetaI));
+    float sinThetaT = ei / et * sinThetaI;
+
+    if (sinThetaT >= 1.0f) { tir = true; return 1.0f; } // total internal reflection
+
+    float cosThetaT = sqrtf(fmaxf(0.0f, 1.0f - sinThetaT * sinThetaT));
+
+    float Rs = (ei * cosThetaI - et * cosThetaT) / (ei * cosThetaI + et * cosThetaT);
+    float Rp = (ei * cosThetaT - et * cosThetaI) / (ei * cosThetaT + et * cosThetaI);
+    tir = false;
+    return 0.5f * (Rs * Rs + Rp * Rp);
 }
-
-
-DEVICE_INLINE bool RefractLocal(const glm::vec3& woL, float eta, glm::vec3& wiLOut) {
-    // snell refraction in local (+z is normal). returns false on tir.
-    float cosI = woL.z;
-    float sin2I = fmaxf(0.f, 1.f - cosI * cosI);
-    float sin2T = eta * eta * sin2I;
-    if (sin2T >= 1.f) return false; // tir
-    float cosT = sqrtf(fmaxf(0.f, 1.f - sin2T));
-
-    // transmitted dir flips hemisphere across the interface
-    float z = (woL.z > 0.f) ? -cosT : cosT;
-    wiLOut = glm::normalize(glm::vec3(-eta * woL.x, -eta * woL.y, z));
-    return true;
-}
-
 
 // ggx microfacet btdf (isotropic), local frame (+z = normal)
 // wi and wo must be on opposite sides of the interface (wi.z * wo.z < 0)
@@ -199,9 +190,8 @@ DEVICE_INLINE glm::vec3 MicrofacetBTDF(
     float alpha, float etaI, float etaT)
 {
     if (wo.z == 0.f || wi.z == 0.f) return glm::vec3(0);
-    if (wo.z * wi.z >= 0.f) return glm::vec3(0); // must be opposite hemispheres
+    if (wo.z * wi.z >= 0.f) return glm::vec3(0);
 
-    // half-vector for transmission: points to the same side as the normal
     glm::vec3 m = glm::normalize(wo + wi * (etaT / etaI));
     if (m.z < 0.f) m = -m;
 
@@ -211,16 +201,119 @@ DEVICE_INLINE glm::vec3 MicrofacetBTDF(
     float cosWoM = fabsf(glm::dot(wo, m));
     float cosWiM = fabsf(glm::dot(wi, m));
 
-    float F = FresnelDielectric(glm::dot(wo, m), etaI, etaT); // reflectance for the microfacet
+    bool tir = false; 
+    float F = FresnelDielectricExact(glm::dot(wo, m), etaI, etaT, tir);
     float denom = (etaI * cosWoM + etaT * cosWiM);
     if (denom <= 0.f) return glm::vec3(0);
 
-    // transmission factor (walter 2007): (1 - F) * D * G * etaT^2 * |wi*m| * |wo*m|
-    // / (|wi*n| * |wo*n| * (etaI * wo*m + etaT * wi*m)^2)
     float scale = (1.f - F) * D * G * (etaT * etaT) * (cosWiM * cosWoM)
         / (fabsf(wi.z) * fabsf(wo.z) * denom * denom);
    
     return glm::vec3(scale);
+}
+
+// refract across the microfacet normal m (local frame, +z is surface normal)
+DEVICE_INLINE bool RefractThroughFacet(const glm::vec3& wo, const glm::vec3& m,
+    float etaI, float etaT, glm::vec3& wi)
+{
+    float cosWoM = glm::dot(wo, m);
+    float eta = (wo.z > 0.f) ? (etaI / etaT) : (etaT / etaI);
+
+    float sin2I = fmaxf(0.f, 1.f - cosWoM * cosWoM);
+    float sin2T = eta * eta * sin2I;
+    if (sin2T >= 1.f) return false; // total internal reflection at the microfacet
+
+    float cosT = sqrtf(fmaxf(0.f, 1.f - sin2T));
+    wi = glm::normalize(eta * -wo + (eta * cosWoM - cosT) * m);
+    return true;
+}
+
+// pdf for ggx microfacet transmission with vndf sampling of m
+DEVICE_INLINE float PdfMicrofacetBTDF(const glm::vec3& wo, const glm::vec3& wi,
+    const glm::vec3& m, float alpha,
+    float etaI, float etaT)
+{
+    const float D = DGGX(m, alpha);
+    const float G1wo = G1SmithGGX(wo, alpha);
+    const float cosWo = fmaxf(1e-6f, AbsCosTheta(wo));
+    const float cosWoM = fabsf(glm::dot(wo, m));
+    const float cosWiM = fabsf(glm::dot(wi, m));
+    const float denom = (etaI * cosWoM + etaT * cosWiM);
+    if (cosWo <= 0.f || denom <= 0.f) return 0.f;
+
+    const float pm = (D * G1wo * cosWoM) / cosWo;
+    const float dmdw = (etaT * etaT * cosWiM) / (denom * denom);
+    return pm * dmdw;
+}
+
+// sample ggx transmission (world-space in/out), evaluate btdf and its lobe pdf
+DEVICE_INLINE bool SampleMicrofacetTransmission_GGX(
+    const glm::vec3& nW,           // world shading normal
+    const glm::vec3& woW,          // world outgoing (toward camera)
+    float alpha,
+    float etaI, float etaT,
+    float u1, float u2,
+    glm::vec3& wiW, glm::vec3& f, float& pdfLobe)
+{
+    // delta fallback for perfectly smooth case
+    const float ALPHA_EPS = 1e-3f;
+    if (alpha <= ALPHA_EPS) {
+        glm::vec3 wo = glm::normalize(woW);
+        float cosNo = glm::dot(nW, wo);
+        bool entering = (cosNo > 0.0f);
+        float ei = entering ? etaI : etaT;
+        float et = entering ? etaT : etaI;
+        float eta = ei / et;
+
+        glm::vec3 N = entering ? nW : -nW;
+
+        // snell
+        float k = 1.0f - eta * eta * (1.0f - cosNo * cosNo);
+        if (k > 0.0f) {
+            glm::vec3 wi = glm::normalize(eta * (-wo) + (eta * cosNo - sqrtf(k)) * N);
+            wiW = wi;
+
+            float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, wi)));
+            float weight = eta * eta;
+            f = glm::vec3(weight / cosNI);
+            pdfLobe = 1.0f;
+            return true;
+        }
+        else {
+            glm::vec3 wi = glm::reflect(-wo, N);
+            wiW = glm::normalize(wi);
+            float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, wiW)));
+            f = glm::vec3(1.0f / cosNI);
+            pdfLobe = 1.0f;
+            return true;
+        }
+    }
+
+    // to local
+    glm::vec3 wo;
+    worldToLocal(nW, glm::normalize(woW), wo);
+    if (wo.z == 0.f) { pdfLobe = 0.f; f = glm::vec3(0); return false; }
+
+    // sample facet normal with heitz vndf
+    glm::vec3 m = SampleWhVNDF(wo, alpha, u1, u2);
+    if (m.z < 0.f) m = -m;
+
+    // refract through the facet
+    glm::vec3 wi;
+    if (!RefractThroughFacet(wo, m, etaI, etaT, wi)) { pdfLobe = 0.f; f = glm::vec3(0); return false; }
+    if (wi.z * wo.z >= 0.f) { pdfLobe = 0.f; f = glm::vec3(0); return false; } // must change hemisphere
+
+    // evaluate btdf
+    glm::vec3 ft = MicrofacetBTDF(wo, wi, alpha, etaI, etaT);
+    float pdfT = PdfMicrofacetBTDF(wo, wi, m, alpha, etaI, etaT);
+    if (!(pdfT > 0.f)) { pdfLobe = 0.f; f = glm::vec3(0); return false; }
+
+    // back to world
+    glm::vec3 wiWorld = localToWorld(nW, wi);
+    wiW = wiWorld;
+    f = ft;
+    pdfLobe = pdfT;
+    return true;
 }
 
 // sample base color: uses texture if present, else constant

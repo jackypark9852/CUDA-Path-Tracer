@@ -142,56 +142,6 @@ DEVICE_INLINE void ShadeTransmissiveImpl(
     --seg->remainingBounces;
 }
 
-struct SmoothRefractSample {
-    glm::vec3 wiW = glm::vec3(0);
-    glm::vec3 f = glm::vec3(0);
-    float     pdf = 1.f;    // delta convention
-    bool      isDelta = true;
-};
-
-DEVICE_INLINE SmoothRefractSample SampleSmoothRefractOnly(
-    const glm::vec3& nW,   // world normal
-    const glm::vec3& woW,  // world outgoing
-    float iorB
-) {
-    // implements only refraction. no fresnel split. on tir, falls back to perfect reflection.
-    SmoothRefractSample out{};
-
-    glm::vec3 woL; worldToLocal(nW, glm::normalize(woW), woL);
-
-    const float etaA = 1.0f;
-    const float etaB = iorB;
-    const bool entering = (woL.z > 0.f);
-    const float etaI = entering ? etaA : etaB;
-    const float etaT = entering ? etaB : etaA;
-    const float eta = etaI / etaT;
-
-    glm::vec3 wiL;
-    bool refrOk = RefractLocal(woL, eta, wiL);
-
-    if (refrOk) {
-        // refraction branch (no fresnel): weight = eta^2
-        out.wiW = localToWorld(nW, wiL);
-        const float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, out.wiW)));
-        const float weight = eta * eta;
-        out.f = glm::vec3(weight / cosNI);
-        out.pdf = 1.f;      // delta
-        out.isDelta = true;
-        return out;
-    }
-    else {
-        // tir fallback: perfect mirror, weight = 1
-        glm::vec3 wiLR = glm::reflect(-woL, glm::vec3(0, 0, 1));
-        if (wiLR.z <= 0.f) wiLR.z = fabsf(wiLR.z); // safety
-        out.wiW = localToWorld(nW, wiLR);
-        const float cosNI = fmaxf(1e-6f, fabsf(glm::dot(nW, out.wiW)));
-        out.f = glm::vec3(1.f / cosNI);
-        out.pdf = 1.f;      // delta
-        out.isDelta = true;
-        return out;
-    }
-}
-
 // samples the material bsdf (diffuse + ggx specular) and returns a single sampled lobe
 DEVICE_INLINE BSDFSample SampleBSDF(
     ShadeableIntersection* isect,
@@ -212,6 +162,14 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     glm::vec3 woWorld = glm::normalize(-seg->ray.direction);
     glm::vec3 woLocal; worldToLocal(normal, woWorld, woLocal);
 
+    // transmission params
+    float etaI = 1.0f, etaT = mat->ior;
+    if (woLocal.z < 0.f) { etaI = mat->ior; etaT = 1.0f; }
+    bool tirFlag = false;
+
+    // exact fresnel at the shading normal incidence angle
+    float F_exact = FresnelDielectricExact(fabsf(glm::dot(woWorld, normal)), etaI, etaT, tirFlag);
+
     // dielectric f0 from ior; blend toward baseColor if metallic
     glm::vec3 F0_dielectric = F0FromIOR(mat->ior);
     glm::vec3 F0 = glm::mix(F0_dielectric, baseColor, metallic);
@@ -221,23 +179,19 @@ DEVICE_INLINE BSDFSample SampleBSDF(
     float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
     float alpha = roughness * roughness;
 
-    // transmission params
+    // lobe weights (probabilities before flooring)
     const bool transmissive = (metallic < EPSILON && mat->transmission > 0.0f);
-    float etaI = 1.0f, etaT = mat->ior;
-    if (woLocal.z < 0.f) { etaI = mat->ior; etaT = 1.0f; } // outside or inside
-
-    // lobe weights: diffuse suppressed by fresnel and metallic, specular by fresnel
-    float wDiffuse = (1.f - metallic) * (1.f - mat->transmission) * (1.f - F_avg);
-    float wRefl = F_avg;    
-    float wMS = (transmissive)? 0.0f : MicrofacetMSWeight(alpha, F_avg);
-    float wTrans = transmissive ? (1.f - F_avg) : 0.f; // transmission is complementary to 
+    float wDiffuse = (1.f - metallic) * (1.f - mat->transmission) * (1.f - F_exact);
+    float wRefl = F_exact;
+    float wTrans = (transmissive && !tirFlag) ? (1.f - F_exact) : 0.f;
+    float wMS = transmissive ? 0.0f : MicrofacetMSWeight(alpha, F_avg);
 
     // sampling floors
     float wReflS = fmaxf(0.08f, wRefl);
     float wTransS = wTrans;
 
     // mixture probabilities
-    float wSum = wDiffuse + wReflS + wTransS + wMS + 1e-7f;
+    float wSum = wDiffuse + wReflS + wTransS + wMS + 1e-7;
     float pDiffuse = wDiffuse / wSum;
     float pRefl = wReflS / wSum;
     float pTrans = wTransS / wSum;
@@ -275,17 +229,26 @@ DEVICE_INLINE BSDFSample SampleBSDF(
         return sample;
     }
     else if (xi < pDiffuse + pRefl + pTrans) {
-        SmoothRefractSample g = SampleSmoothRefractOnly(
+        glm::vec3 wiWorld, fTrans; float pdfLobe = 0.f;
+
+        bool ok = SampleMicrofacetTransmission_GGX(
             normal,
             woWorld,
-            mat->ior
-        );
+            alpha,
+            etaI, etaT,
+            u01(rng), u01(rng),
+            wiWorld, fTrans, pdfLobe);
 
-        BSDFSample sample{};
-        sample.incomingDir = glm::normalize(g.wiW);
-        sample.bsdfValue = glm::vec3(1.0f);
-        sample.pdf = g.pdf;
-        sample.isDelta = g.isDelta;
+        if (!ok || pdfLobe <= 0.f) { sample.pdf = 0.f; return sample; }
+
+        // disney-style tint for transmission
+        glm::vec3 tint = baseColor;
+        glm::vec3 value = (1.f - metallic) * mat->transmission * tint * fTrans;
+
+        sample.incomingDir = glm::normalize(wiWorld);
+        sample.bsdfValue = value;
+        sample.pdf = pdfLobe * pTrans;
+        sample.isDelta = false;
         return sample;
     }
 
@@ -346,13 +309,9 @@ DEVICE_INLINE void ShadePbrImpl(
     // transmission if wi and wo are on opposite sides of the surface
     bool isTransmission = (glm::dot(nW, woW) * glm::dot(nW, wi)) < 0.0f;
 
-    // choose offset direction and epsilon
-    float epsRefl = EPSILON;
-    float epsRefr = 3e-4f;
     glm::vec3 offsetN = isTransmission ? (-orientedN) : orientedN;
-    float eps = isTransmission ? epsRefr : epsRefl;
 
-    seg->ray.origin = hitP + offsetN * eps;
+    seg->ray.origin = hitP + offsetN * EPSILON;
     seg->ray.direction = wi;
 
     // accumulate throughput with standard path tracing weight

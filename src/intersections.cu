@@ -57,60 +57,61 @@ __host__ __device__ float boxIntersectionTest(
     return -1;
 }
 
+// stable quadratic
+__host__ __device__ inline bool solveQuadratic(float A, float B, float C, float& t0, float& t1)
+{
+    const float invA = 1.0f / A;
+    B *= invA;
+    C *= invA;
+
+    const float neg_halfB = -0.5f * B;
+    const float disc = neg_halfB * neg_halfB - C;
+    if (disc < 0.0f) return false;
+
+    const float u = sqrtf(disc);
+    float r0 = neg_halfB - u;
+    float r1 = neg_halfB + u;
+    if (r0 > r1) { float tmp = r0; r0 = r1; r1 = tmp; }
+    t0 = r0; t1 = r1;
+    return true;
+}
+
 __host__ __device__ float sphereIntersectionTest(
     Geom sphere,
     Ray r,
-    glm::vec3 &intersectionPoint,
-    glm::vec3 &normal,
-    bool &outside)
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    bool& outside)
 {
-    float radius = .5;
+    const float radius = 0.5f;
+    const float EPS = 1e-5f;
 
-    glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
-    glm::vec3 rd = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
+    const glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
+    glm::vec3       rd = multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f));
+    rd = glm::normalize(rd);
 
-    Ray rt;
-    rt.origin = ro;
-    rt.direction = rd;
+    const float A = glm::dot(rd, rd);
+    const float B = 2.0f * glm::dot(rd, ro);
+    const float C = glm::dot(ro, ro) - radius * radius;
 
-    float vDotDirection = glm::dot(rt.origin, rt.direction);
-    float radicand = vDotDirection * vDotDirection - (glm::dot(rt.origin, rt.origin) - powf(radius, 2));
-    if (radicand < 0)
-    {
-        return -1;
-    }
+    float t0, t1;
+    if (!solveQuadratic(A, B, C, t0, t1)) return -1.0f;
 
-    float squareRoot = sqrt(radicand);
-    float firstTerm = -vDotDirection;
-    float t1 = firstTerm + squareRoot;
-    float t2 = firstTerm - squareRoot;
+    float t_obj = (t0 > EPS) ? t0 : ((t1 > EPS) ? t1 : -1.0f);
+    if (t_obj < 0.0f) return -1.0f;
 
-    float t = 0;
-    if (t1 < 0 && t2 < 0)
-    {
-        return -1;
-    }
-    else if (t1 > 0 && t2 > 0)
-    {
-        t = min(t1, t2);
-        outside = true;
-    }
-    else
-    {
-        t = max(t1, t2);
-        outside = false;
-    }
+    const glm::vec3 p_os = ro + t_obj * rd;
+    const glm::vec3 n_os = glm::normalize(p_os); // sphere centered at origin
 
-    glm::vec3 objspaceIntersection = getPointOnRay(rt, t);
+    intersectionPoint = multiplyMV(sphere.transform, glm::vec4(p_os, 1.0f));
+    normal = glm::normalize(multiplyMV(sphere.invTranspose, glm::vec4(n_os, 0.0f)));
 
-    intersectionPoint = multiplyMV(sphere.transform, glm::vec4(objspaceIntersection, 1.f));
-    normal = glm::normalize(multiplyMV(sphere.invTranspose, glm::vec4(objspaceIntersection, 0.f)));
-    if (!outside)
-    {
-        normal = -normal;
-    }
+    outside = (glm::dot(normal, r.direction) < 0.0f);
+    if (!outside) normal = -normal;
 
-    return glm::length(r.origin - intersectionPoint);
+    const float dirLen = glm::length(r.direction);
+    if (dirLen <= 0.0f) return -1.0f;
+    return glm::length(intersectionPoint - r.origin) / dirLen;
 }
 
 
