@@ -79,7 +79,7 @@ __host__ __device__ bool RayTriangleIntersect(
 
 __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3); 
 
-__host__ __device__ bool RayAABBIntersection(
-    AABB aabb,
-    Ray r,
-    float t);
+__host__ __device__ float RayAABBIntersection(
+    const AABB& aabb,
+    const Ray& r,
+    float tMax);

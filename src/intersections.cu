@@ -173,24 +173,24 @@ __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t
     return glm::vec3(S1 / S, S2 / S, S3 / S);
 }
 
-__host__ __device__ bool RayAABBIntersection(
-    AABB aabb,
-    Ray r, 
-    float t) 
+__host__ __device__ float RayAABBIntersection(
+    const AABB& aabb,
+    const Ray& r,
+    float tMax)
 {
-    glm::vec3 aabbMin = aabb.minBounds; 
-    glm::vec3 aabbMax = aabb.maxBounds; 
-    float tx1 = (aabbMin.x - r.origin.x) / r.direction.x;
-    float tx2 = (aabbMax.x - r.origin.x) / r.direction.x;
-    float tmin = fminf(tx1, tx2); 
-    float tmax = fmaxf(tx1, tx2);
-    float ty1 = (aabbMin.y - r.origin.y) / r.direction.y;
-    float ty2 = (aabbMax.y - r.origin.y) / r.direction.y;
-    tmin = fmaxf(tmin, fminf(ty1, ty2)); 
-    tmax = fminf(tmax, fmaxf(ty1, ty2));
-    float tz1 = (aabbMin.z - r.origin.z) / r.direction.z;
-    float tz2 = (aabbMax.z - r.origin.z) / r.direction.z;
-    tmin = fmaxf(tmin, fminf(tz1, tz2)); 
-    tmax = fminf(tmax, fmaxf(tz1, tz2));
-    return tmax >= tmin && tmin < t && tmax > 0;
+    const glm::vec3 invDir = 1.0f / r.direction;
+    const glm::vec3 t0 = (aabb.minBounds - r.origin) * invDir;
+    const glm::vec3 t1 = (aabb.maxBounds - r.origin) * invDir;
+
+    const float txmin = fminf(t0.x, t1.x), txmax = fmaxf(t0.x, t1.x);
+    const float tymin = fminf(t0.y, t1.y), tymax = fmaxf(t0.y, t1.y);
+    const float tzmin = fminf(t0.z, t1.z), tzmax = fmaxf(t0.z, t1.z);
+
+    float tEnter = fmaxf(txmin, fmaxf(tymin, tzmin));
+    float tExit = fminf(txmax, fminf(tymax, tzmax));
+
+    if (tExit >= tEnter && tExit > 0.0f && tEnter < tMax) {
+        return fmaxf(tEnter, 0.0f);
+    }
+    return 1e30;
 }
