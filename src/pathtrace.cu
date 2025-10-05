@@ -301,6 +301,8 @@ __device__ inline void TraverseSceneNaiveGltf(
     }
 }
 
+inline __host__ __device__ bool isMiss(float t) { return t < 0.0f; }
+
 __device__ inline void TraverseSceneBvh(
     const DeviceGltfScene& scene,
     const PathSegment& seg,
@@ -330,22 +332,17 @@ __device__ inline void TraverseSceneBvh(
         float bestT_os = (hs.tMin < FLT_MAX * 0.5f) ? (hs.tMin * dir_os_len) : FLT_MAX;
 
         for (int pi = 0; pi < dmesh.numPrimitives; ++pi) {
-            const DevicePrimitive dp = dmesh.primitives[pi];
+            const DevicePrimitive& dp = dmesh.primitives[pi];
             if (dp.numVertices <= 0 || dp.bvhNodes == nullptr) continue;
 
             // root at index 0
-            int sp = 0;
-            stack[sp++] = 0;
+            uint32_t sp = 0;
+            const BvhNode* node = &dp.bvhNodes[0];
 
-            while (sp > 0) {
-                const int nodeIdx = stack[--sp];
-                const BvhNode node = dp.bvhNodes[nodeIdx];
-                
-                if (RayAABBIntersection(node.aabb, objRay, bestT_os) == 1e30) continue;
-
-                if (node.triCount > 0) { // is a leaf node
-                    const uint32_t start = node.leftFirst;
-                    const uint32_t end = start + node.triCount;
+            while (true) {
+                if (node->triCount > 0) { // is a leaf node
+                    const uint32_t start = node->leftFirst;
+                    const uint32_t end = start + node->triCount;
                     for (uint32_t triIdx = start; triIdx < end; ++triIdx) {
                         const int b = static_cast<int>(triIdx) * 3;
                         const int i0 = dp.indices[b + 0];
@@ -402,13 +399,46 @@ __device__ inline void TraverseSceneBvh(
                         MaybeUpdateBest(tWorld, ns_ws, uv, inst.meshIndex, pi, hs);
                         bestT_os = t_os;  // tighten OS pruning window within this instance
                     }
+
+                    if (sp == 0) break;
+                    node = &dp.bvhNodes[stack[--sp]];
                 }
                 else { // is not a leaf node
-                    const int leftIdx = static_cast<int>(node.leftFirst);
-                    const int rightIdx = leftIdx + 1;
+                    uint32_t child0Idx = node->leftFirst + 0;
+                    uint32_t child1Idx = node->leftFirst + 1;
+                    const BvhNode* child0 = &dp.bvhNodes[child0Idx];
+                    const BvhNode* child1 = &dp.bvhNodes[child1Idx];
 
-                    if (sp < 63) stack[sp++] = rightIdx;
-                    if (sp < 63) stack[sp++] = leftIdx;
+                    // compute entry t for each child
+                    float t0 = RayAABBIntersection(child0->aabb, objRay, bestT_os);
+                    float t1 = RayAABBIntersection(child1->aabb, objRay, bestT_os);
+
+                    // if both miss, pop
+                    if (isMiss(t0) & isMiss(t1)) { // bitwise & avoids short-circuit divergence on GPUs
+                        if (sp == 0) break;
+                        node = &dp.bvhNodes[stack[--sp]];
+                        continue;
+                    }
+
+                    // order near/far: treat miss (-1) as +inf
+                    float k0 = isMiss(t0) ? FLT_MAX : t0;
+                    float k1 = isMiss(t1) ? FLT_MAX : t1;
+
+                    bool swapNeeded = (k1 + EPSILON) < k0;
+                    if (swapNeeded) {
+                        thrust::swap(child0, child1);
+                        thrust::swap(child0Idx, child1Idx);
+                        thrust::swap(t0, t1);
+                        thrust::swap(k0, k1);
+                    }
+
+                    // Visit near child
+                    node = child0;
+
+                    // Push far child only if it's a hit and could still contain something closer
+                    if (!isMiss(t1) && t1 < bestT_os) {
+                        stack[sp++] = child1Idx;
+                    }
                 }
             }
         }

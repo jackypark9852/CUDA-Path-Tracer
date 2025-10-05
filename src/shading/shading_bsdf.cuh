@@ -47,7 +47,7 @@ DEVICE_INLINE glm::vec3 SampleWhVNDF(const glm::vec3& wo, float alpha, float u1,
 // smith lambda for isotropic ggx; diverges at grazing angles as expected
 DEVICE_INLINE float Lambda(glm::vec3 w, float alpha) {
     float absTanTheta = fabsf(TanTheta(w));
-    if (!isfinite(absTanTheta)) return INFINITY; // safe guard at grazing
+    if (!isfinite(absTanTheta)) return 1e30; // safe guard at grazing
     float aTan = alpha * absTanTheta;
     return 0.5f * (-1.0f + sqrtf(1.0f + aTan * aTan));
 }

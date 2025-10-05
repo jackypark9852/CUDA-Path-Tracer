@@ -192,5 +192,5 @@ __host__ __device__ float RayAABBIntersection(
     if (tExit >= tEnter && tExit > 0.0f && tEnter < tMax) {
         return fmaxf(tEnter, 0.0f);
     }
-    return 1e30;
+    return -1.0;    
 }
