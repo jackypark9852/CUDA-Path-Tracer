@@ -4,8 +4,9 @@
 #include <cuda.h>
 #include <cmath>
 #include <thrust/random.h>
-
+#include <cuda_runtime.h> 
 #include "glm/gtx/norm.hpp"
+#include "../sceneStructs.h"
 
 __device__ __forceinline__ float CosTheta(const glm::vec3& w) { return w.z; }
 __device__ __forceinline__ float Cos2Theta(const glm::vec3& w) { float c = w.z; return c * c; }
@@ -76,26 +77,22 @@ __device__ __forceinline__ glm::vec3 MakeVec3(float4 c) {
     return glm::vec3(c.x, c.y, c.z);
 }
 
-__device__ __forceinline__ float linear_to_srgb_f(float x) {
-    x = fmaxf(x, 0.0f);
-    return (x <= 0.0031308f) ? (12.92f * x)
-        : (1.055f * powf(x, 1.0f / 2.4f) - 0.055f);
+__device__ __forceinline__ float fast_pow_pos(float a, float b) {
+    return (a <= 0.0f) ? 0.0f : exp2f(b * log2f(a));
 }
 
+__device__ __forceinline__ float linear_to_srgb_f(float x) {
+    x = fmaxf(x, 0.0f);
+    return (x <= 0.0031308f)
+        ? (12.92f * x)
+        : (1.055f * fast_pow_pos(x, 1.0f / 2.4f) - 0.055f);
+}
 
 __device__ __forceinline__ float srgb_to_linear(float c) {
     c = fminf(fmaxf(c, 0.0f), 1.0f);
-    return (c <= 0.04045f) ? (c / 12.92f)
-        : powf((c + 0.055f) / 1.055f, 2.4f);
-}
-
-
-__device__ __forceinline__ glm::vec3 srgb_to_linear(const glm::vec3& c) {
-    return glm::vec3(
-        srgb_to_linear(c.x),
-        srgb_to_linear(c.y),
-        srgb_to_linear(c.z)
-    );
+    return (c <= 0.04045f)
+        ? (c / 12.92f)
+        : fast_pow_pos((c + 0.055f) / 1.055f, 2.4f);
 }
 
 __device__ __forceinline__ glm::vec3 aces_v3(glm::vec3 x) {

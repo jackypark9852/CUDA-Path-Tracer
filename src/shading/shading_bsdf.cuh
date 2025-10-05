@@ -135,8 +135,8 @@ DEVICE_INLINE glm::vec3 F0FromIOR(float ior) {
 
 // disney-ish diffuse fresnel factor (no retro-reflection term)
 DEVICE_INLINE float DisneyDiffuseFresnel(float NdotL, float NdotV) {
-    float FL = powf(fmaxf(0.f, 1.f - NdotL), 5.f);
-    float FV = powf(fmaxf(0.f, 1.f - NdotV), 5.f);
+    float FL = fast_pow_pos(fmaxf(0.f, 1.f - NdotL), 5.f);
+    float FV = fast_pow_pos(fmaxf(0.f, 1.f - NdotV), 5.f);
     return (1.f - 0.5f * FL) * (1.f - 0.5f * FV);
 }
 
