@@ -69,10 +69,10 @@ void FindSplitPlaneNaive(const BvhNode& currentNode, int& axis, float& splitPos)
 float EvaluateSAH(
 	const BvhNode& currentNode,
 	const std::vector<glm::vec3>& positions,
-	std::vector<glm::vec3>& centroids,
-	std::vector<uint32_t>& indices,
-	int& axis,
-	float& splitPos)
+	const std::vector<glm::vec3>& centroids,
+	const std::vector<uint32_t>& indices,
+	int axis,
+	float splitPos)
 {
 	// split prims 
 	int start = static_cast<int>(currentNode.leftFirst);
@@ -97,6 +97,78 @@ float EvaluateSAH(
 	return cost > 0 ? cost : 1e30;
 }
 
+#define BINS 8
+
+float FindSplitPlaneSAH(
+	const BvhNode& currentNode, 
+	const std::vector<glm::vec3>& positions, 
+	const std::vector<glm::vec3>& centroids, 
+	const std::vector<uint32_t>& indices, 
+	int& axis, 
+	float& splitPos)
+{
+	float bestCost = 1e30f;
+
+	// iteratively find the best split plane
+	for (int candidateAxis = 0; candidateAxis < 3; candidateAxis++) {
+		float boundsMin = 1e30f, boundsMax = -1e30f;
+		int start = static_cast<int>(currentNode.leftFirst);
+		int end = start + static_cast<int>(currentNode.triCount);
+		for (uint32_t i = start; i < end; ++i) {
+			glm::vec3 centroid = centroids[i];
+			boundsMin = fminf(boundsMin, centroid[candidateAxis]);
+			boundsMax = fmaxf(boundsMax, centroid[candidateAxis]);
+ 		}
+		if (boundsMin == boundsMax) continue;
+
+		// populate bins
+		Bin bin[BINS];
+		float scale = BINS / (boundsMax - boundsMin);
+		for (uint32_t i = start; i < end; ++i)
+		{
+			int binIdx = glm::min(BINS - 1,
+				(int)((centroids[i][candidateAxis] - boundsMin) * scale));
+			bin[binIdx].triCount++;
+
+			glm::vec3 v0 = positions[indices[i * 3 + 0]];
+			glm::vec3 v1 = positions[indices[i * 3 + 1]];
+			glm::vec3 v2 = positions[indices[i * 3 + 2]];
+		
+			bin[binIdx].aabb.grow(v0);
+			bin[binIdx].aabb.grow(v1);
+			bin[binIdx].aabb.grow(v2);
+		}
+
+		float leftArea[BINS - 1], rightArea[BINS - 1];
+		int leftCount[BINS - 1], rightCount[BINS - 1];
+		AABB leftBox, rightBox;
+		int leftSum = 0, rightSum = 0;
+		for (int i = 0; i < BINS - 1; i++)
+		{
+			leftSum += bin[i].triCount;
+			leftCount[i] = leftSum;
+			leftBox.grow(bin[i].aabb);
+			leftArea[i] = leftBox.area();
+			rightSum += bin[BINS - 1 - i].triCount;
+			rightCount[BINS - 2 - i] = rightSum;
+			rightBox.grow(bin[BINS - 1 - i].aabb);
+			rightArea[BINS - 2 - i] = rightBox.area();
+		}
+		
+		scale = (boundsMax - boundsMin) / BINS;
+		for (int i = 0; i < BINS - 1; i++)
+		{
+			float planeCost =
+				leftCount[i] * leftArea[i] + rightCount[i] * rightArea[i];
+			if (planeCost < bestCost)
+				axis = candidateAxis, splitPos = boundsMin + scale * (i + 1),
+				bestCost = planeCost;
+		}
+	}
+
+	return bestCost; 
+}
+
 
 void Subdivide(
 	uint32_t nodeIdx,
@@ -108,9 +180,11 @@ void Subdivide(
 	BvhNode& currentNode = outBvhNodes[nodeIdx];
 
 	// find split position and axis
-	int axis; 
-	float splitPos; 
-	FindSplitPlaneNaive(currentNode, axis, splitPos);
+	int axis = 0; 
+	float splitPos = 0.0f; 
+
+	//FindSplitPlaneNaive(currentNode, axis, splitPos);
+	FindSplitPlaneSAH(currentNode, positions, centroids, indices, axis, splitPos); 
 
 	// split prims 
 	int i = static_cast<int>(currentNode.leftFirst);

@@ -23,12 +23,21 @@ struct AABB
         }
     }
 
+    void grow(const AABB& b) {
+        for (uint32_t i = 0; i < 3; ++i) {
+            minBounds[i] = fminf(minBounds[i], b.minBounds[i]);
+            maxBounds[i] = fmaxf(maxBounds[i], b.maxBounds[i]);
+        }
+    }
+
     float area()
     {
         glm::vec3 e = maxBounds - minBounds; // box extent
         return e.x * e.y + e.y * e.z + e.z * e.x;
     }
 };
+
+struct Bin { AABB aabb; int triCount = 0; };
 
 struct BvhNode
 {
@@ -61,8 +70,17 @@ void FindSplitPlaneNaive(
 float EvaluateSAH(
     const BvhNode& currentNode,
     const std::vector<glm::vec3>& positions,
-    std::vector<glm::vec3>& centroids,
-    std::vector<uint32_t>& indices,
+    const std::vector<glm::vec3>& centroids,
+    const std::vector<uint32_t>& indices,
+    int axis,
+    float splitPos
+);
+
+float FindSplitPlaneSAH(
+    const BvhNode& currentNode,
+    const std::vector<glm::vec3>& positions,
+    const std::vector<glm::vec3>& centroids,
+    const std::vector<uint32_t>& indices,
     int& axis,
     float& splitPos
 );
