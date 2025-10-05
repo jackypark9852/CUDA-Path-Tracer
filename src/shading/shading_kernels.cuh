@@ -142,191 +142,216 @@ DEVICE_INLINE void ShadeTransmissiveImpl(
     --seg->remainingBounces;
 }
 
-// samples the material bsdf (diffuse + ggx specular) and returns a single sampled lobe
-DEVICE_INLINE BSDFSample SampleBSDF(
-    ShadeableIntersection* isect,
-    PathSegment* seg,
-    Material* mat,
-    cpt::Texture2D* textures,
+struct LobeInputs {
+    glm::vec3 baseColor;
+    float metallic;
+    float roughness;    // [0..1]
+    glm::vec3 nW;       // world shading normal (after normal map)
+    glm::vec3 woW;      // world outgoing (toward camera)
+    glm::vec3 woL;      // local outgoing (+z is n)
+    float alpha;        // roughness^2
+    glm::vec3 F0;       // conductor/dielectric mix
+};
+
+// builds common inputs
+DEVICE_INLINE LobeInputs BuildLobeInputs(
+    const ShadeableIntersection* isect,
+    const PathSegment* seg,
+    const Material* mat,
+    const cpt::Texture2D* tex)
+{
+    LobeInputs li{};
+    li.baseColor = SampleBaseColor(mat, tex, isect->uv);
+    li.metallic = SampleMetallic(mat, tex, isect->uv).x;
+    li.roughness = SampleRoughness(mat, tex, isect->uv).x;
+    li.nW = ApplyNormalMap(mat, tex, isect);
+    li.woW = glm::normalize(-seg->ray.direction);
+    worldToLocal(li.nW, li.woW, li.woL);
+    glm::vec3 F0d = F0FromIOR(mat->ior);
+    li.F0 = glm::mix(F0d, li.baseColor, li.metallic);
+    li.alpha = li.roughness * li.roughness;
+    return li;
+}
+
+// opaque: diffuse + ggx refl (+ optional ms)
+DEVICE_INLINE BSDFSample SampleOpaqueBSDF(
+    const ShadeableIntersection* isect,
+    const PathSegment* seg,
+    const Material* mat,
+    const cpt::Texture2D* tex,
     thrust::default_random_engine& rng)
 {
-    BSDFSample sample{}; sample.pdf = 0.f;
-    thrust::uniform_real_distribution<float> u01(0, 1);
+    BSDFSample s{}; s.pdf = 0.f;
+    thrust::uniform_real_distribution<float> U(0, 1);
 
-    glm::vec3 baseColor = SampleBaseColor(mat, textures, isect->uv);
-    float metallic = SampleMetallic(mat, textures, isect->uv).x; 
-    float roughness = SampleRoughness(mat, textures, isect->uv).x; 
-    glm::vec3 normal = ApplyNormalMap(mat, textures, isect);
+    LobeInputs li = BuildLobeInputs(isect, seg, mat, tex);
+    float NdotV = fmaxf(glm::dot(li.nW, li.woW), 0.f);
+    glm::vec3 Fv = FresnelSchlick(li.F0, NdotV);
+    float Favg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
 
-    // uses local frame (+z = normal) for microfacet math
-    glm::vec3 woWorld = glm::normalize(-seg->ray.direction);
-    glm::vec3 woLocal; worldToLocal(normal, woWorld, woLocal);
+    float wDiffuse = (1.f - li.metallic) * (1.f - Favg);
+    float wRefl = Favg;
+    float wMS = MicrofacetMSWeight(li.alpha, Favg);
 
-    // transmission params
-    float etaI = 1.0f, etaT = mat->ior;
-    if (woLocal.z < 0.f) { etaI = mat->ior; etaT = 1.0f; }
-    bool tirFlag = false;
-
-    // exact fresnel at the shading normal incidence angle
-    float F_exact = FresnelDielectricExact(fabsf(glm::dot(woWorld, normal)), etaI, etaT, tirFlag);
-
-    // dielectric f0 from ior; blend toward baseColor if metallic
-    glm::vec3 F0_dielectric = F0FromIOR(mat->ior);
-    glm::vec3 F0 = glm::mix(F0_dielectric, baseColor, metallic);
-
-    float NdotV = fmaxf(glm::dot(normal, woWorld), 0.f);
-    glm::vec3 Fv = FresnelSchlick(F0, NdotV);
-    float F_avg = (Fv.x + Fv.y + Fv.z) * (1.f / 3.f);
-    float alpha = roughness * roughness;
-
-    // lobe weights (probabilities before flooring)
-    const bool transmissive = (metallic < EPSILON && mat->transmission > 0.0f);
-    float wDiffuse = (1.f - metallic) * (1.f - mat->transmission) * (1.f - F_exact);
-    float wRefl = F_exact;
-    float wTrans = (transmissive && !tirFlag) ? (1.f - F_exact) : 0.f;
-    float wMS = transmissive ? 0.0f : MicrofacetMSWeight(alpha, F_avg);
-
-    // sampling floors
     float wReflS = fmaxf(0.08f, wRefl);
-    float wTransS = wTrans;
-
-    // mixture probabilities
-    float wSum = wDiffuse + wReflS + wTransS + wMS + 1e-7;
+    float wSum = wDiffuse + wReflS + wMS + 1e-7f;
     float pDiffuse = wDiffuse / wSum;
     float pRefl = wReflS / wSum;
-    float pTrans = wTransS / wSum;
     float pMS = wMS / wSum;
 
-    float xi = u01(rng);
-    // diffuse lobe (cosine-weighted in world space)
+    float xi = U(rng);
+
     if (xi < pDiffuse) {
-        glm::vec3 wi = CalculateRandomDirectionInHemisphere(normal, rng);
-        wi = glm::normalize(wi);
-
-        float NdotL = fmaxf(glm::dot(normal, wi), 0.0f);
+        glm::vec3 wi = glm::normalize(CalculateRandomDirectionInHemisphere(li.nW, rng));
+        float NdotL = fmaxf(glm::dot(li.nW, wi), 0.f);
         float fdFr = DisneyDiffuseFresnel(NdotL, NdotV);
-        
-        glm::vec3 fd = (1.f - metallic) * fdFr * LambertBRDF(baseColor);
+        glm::vec3 fd = (1.f - li.metallic) * fdFr * LambertBRDF(li.baseColor);
 
-        sample.incomingDir = wi;                     // world space
-        sample.bsdfValue = fd;                     // brdf value
-        sample.pdf = LambertPDF(NdotL) * pDiffuse; // include mixture weight
-        sample.isDelta = false;
-        return sample;
+        s.incomingDir = wi;
+        s.bsdfValue = fd;
+        s.pdf = LambertPDF(NdotL) * pDiffuse;
+        s.isDelta = false;
+        return s;
     }
-    // specular reflection lobe sampled via vndf
     else if (xi < pDiffuse + pRefl) {
-        glm::vec3 wiWorld;
-        float pdfLobe = 0.f;
-
+        glm::vec3 wiW; float pdfLobe = 0.f;
         glm::vec3 fSpec = SampleMicrofacetReflVNDF(
-            F0, normal, woLocal, alpha, u01(rng), u01(rng), wiWorld, pdfLobe);
-
-        sample.incomingDir = glm::normalize(wiWorld);
-        sample.bsdfValue = fSpec;
-        sample.pdf = pdfLobe * pRefl;
-        sample.isDelta = false;
-        return sample;
+            li.F0, li.nW, li.woL, li.alpha, U(rng), U(rng), wiW, pdfLobe);
+        s.incomingDir = glm::normalize(wiW);
+        s.bsdfValue = fSpec;
+        s.pdf = pdfLobe * pRefl;
+        s.isDelta = false;
+        return s;
     }
-    else if (xi < pDiffuse + pRefl + pTrans) {
-        glm::vec3 wiWorld, fTrans; float pdfLobe = 0.f;
-
-        bool ok = SampleMicrofacetTransmission_GGX(
-            normal,
-            woWorld,
-            alpha,
-            etaI, etaT,
-            u01(rng), u01(rng),
-            wiWorld, fTrans, pdfLobe);
-
-        if (!ok || pdfLobe <= 0.f) { sample.pdf = 0.f; return sample; }
-
-        // disney-style tint for transmission
-        glm::vec3 tint = baseColor;
-        glm::vec3 value = (1.f - metallic) * mat->transmission * tint * fTrans;
-
-        sample.incomingDir = glm::normalize(wiWorld);
-        sample.bsdfValue = value;
-        sample.pdf = pdfLobe * pTrans;
-        sample.isDelta = false;
-        return sample;
-    }
-
-    // Multiple scattering compensation
     else {
-        glm::vec3 wi = CalculateRandomDirectionInHemisphere(normal, rng);
-        wi = glm::normalize(wi);
-        float NdotL = fmaxf(glm::dot(normal, wi), 0.0f);
-        glm::vec3 msTint = MicrofacetMSTint(baseColor, metallic); 
+        // optional microfacet ms as diffuse-like fallback
+        glm::vec3 wi = glm::normalize(CalculateRandomDirectionInHemisphere(li.nW, rng));
+        float NdotL = fmaxf(glm::dot(li.nW, wi), 0.f);
+        glm::vec3 msTint = MicrofacetMSTint(li.baseColor, li.metallic);
         glm::vec3 fms = wMS * MicrofacetMSBrdf(msTint);
 
-        sample.incomingDir = wi;
-        sample.bsdfValue = fms;
-        sample.pdf = LambertPDF(NdotL) * pMS;
-        sample.isDelta = false;
-        return sample;
+        s.incomingDir = wi;
+        s.bsdfValue = fms;
+        s.pdf = LambertPDF(NdotL) * pMS;
+        s.isDelta = false;
+        return s;
     }
 }
 
-DEVICE_INLINE void ShadePbrImpl(
-    int iter, int idx,
-    ShadeableIntersection* intersections,
-    PathSegment* pathSegments,
-    Material* materials,
-    cpt::Texture2D* textures)
+DEVICE_INLINE BSDFSample SampleDielectricBSDF(
+    const ShadeableIntersection* isect,
+    const PathSegment* seg,
+    const Material* mat,
+    const cpt::Texture2D* tex,
+    thrust::default_random_engine& rng)
 {
-    ShadeableIntersection* isect = intersections + idx;
-    PathSegment* seg = pathSegments + idx;
-    Material* mat = materials + isect->materialId;
-    
-    if (seg->shouldTerminate) return;
+    BSDFSample s{}; s.pdf = 0.f;
+    thrust::uniform_real_distribution<float> U(0, 1);
 
-    // early out if miss or exhausted
-    if (isect->t <= 0.f || seg->remainingBounces <= 0) {
-        seg->color = glm::vec3(0.f);
-        seg->shouldTerminate = true;
-        return;
+    LobeInputs li = BuildLobeInputs(isect, seg, mat, tex);
+
+    float etaI = 1.f, etaT = mat->ior;
+    if (li.woL.z < 0.f) { etaI = mat->ior; etaT = 1.f; }
+
+    bool tir = false;
+    float F_exact = FresnelDielectricExact(fabsf(glm::dot(li.woW, li.nW)), etaI, etaT, tir);
+
+    float wRefl = F_exact;
+    float wTrans = (!tir ? (mat->transmission * (1.f - F_exact)) : 0.f);
+
+    float wReflS = fmaxf(0.08f, wRefl);
+    float wSum = wReflS + wTrans + 1e-7f;
+    float pRefl = wReflS / wSum;
+    float pTrans = wTrans / wSum;
+
+    float xi = U(rng);
+
+    if (xi < pRefl) {
+        glm::vec3 wiW; float pdfLobe = 0.f;
+        glm::vec3 fSpec = SampleMicrofacetReflVNDF(
+            li.F0, li.nW, li.woL, li.alpha, U(rng), U(rng), wiW, pdfLobe);
+        s.incomingDir = glm::normalize(wiW);
+        s.bsdfValue = fSpec;
+        s.pdf = pdfLobe * pRefl;
+        s.isDelta = false;
+        return s;
     }
+    else {
+        glm::vec3 wiW, fTrans; float pdfLobe = 0.f;
+        bool ok = SampleMicrofacetTransmission_GGX(
+            li.nW, li.woW, li.alpha, etaI, etaT, U(rng), U(rng), wiW, fTrans, pdfLobe);
+        if (!ok || pdfLobe <= 0.f) { s.pdf = 0.f; return s; }
 
-    // early outr if hit emissive material
-    glm::vec3 Le = SampleEmissive(mat, textures, isect->uv);
-    if ((Le.x > EPSILON || Le.y > EPSILON|| Le.z > EPSILON)) {
-        seg->color *= Le;      // convert throughput to radiance
-        seg->shouldTerminate = true;
-        return;
+        glm::vec3 tint = li.baseColor;
+        glm::vec3 value = mat->transmission * tint * fTrans;
+
+        s.incomingDir = glm::normalize(wiW);
+        s.bsdfValue = value;
+        s.pdf = pdfLobe * pTrans;
+        s.isDelta = false;
+        return s;
     }
+}
 
-    thrust::default_random_engine rng =
-        MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
+// single shade that advances ray and applies throughput
+DEVICE_INLINE void ShadeUnifiedAdvance(
+    const ShadeableIntersection* isect,
+    PathSegment* seg,
+    const Material* mat,
+    const cpt::Texture2D* tex,
+    const BSDFSample& samp)
+{
+    glm::vec3 nW = ApplyNormalMap(mat, tex, isect);
+    glm::vec3 wi = glm::normalize(samp.incomingDir);
 
-    BSDFSample sample = SampleBSDF(isect, seg, mat, textures, rng);
-
-    glm::vec3 nW = ApplyNormalMap(mat, textures, isect); 
-    glm::vec3 wi = glm::normalize(sample.incomingDir);
-    float pdf = sample.pdf;
-    glm::vec3 f = sample.bsdfValue;
-
-    // advance ray origin and direction with oriented normal logic
     glm::vec3 hitP = seg->ray.origin + seg->ray.direction * isect->t;
 
-    // compute entering based on outgoing (toward camera) direction
     glm::vec3 woW = glm::normalize(-seg->ray.direction);
     bool entering = glm::dot(woW, nW) > 0.0f;
     glm::vec3 orientedN = entering ? nW : -nW;
 
-    // transmission if wi and wo are on opposite sides of the surface
     bool isTransmission = (glm::dot(nW, woW) * glm::dot(nW, wi)) < 0.0f;
-
     glm::vec3 offsetN = isTransmission ? (-orientedN) : orientedN;
 
     seg->ray.origin = hitP + offsetN * EPSILON;
     seg->ray.direction = wi;
 
-    // accumulate throughput with standard path tracing weight
     float cosNI = fabsf(glm::dot(nW, wi));
-    seg->color *= f * fminf(cosNI / pdf, FLT_MAX);
-
+    seg->color *= samp.bsdfValue * fminf(cosNI / fmaxf(samp.pdf, 1e-8f), FLT_MAX);
     --seg->remainingBounces;
+}
+
+DEVICE_INLINE void ShadePbrImpl(
+    int iter, int idx,
+    ShadeableIntersection* isects,
+    PathSegment* paths,
+    Material* mats,
+    cpt::Texture2D* texs)
+{
+    ShadeableIntersection* isect = isects + idx;
+    PathSegment* seg = paths + idx;
+    Material* mat = mats + isect->materialId;
+
+    if (seg->shouldTerminate) return;
+    if (isect->t <= 0.f || seg->remainingBounces <= 0) { seg->color = glm::vec3(0); seg->shouldTerminate = true; return; }
+
+    // emissive hit early out
+    glm::vec3 Le = SampleEmissive(mat, texs, isect->uv);
+    if (Le.x > EPSILON || Le.y > EPSILON || Le.z > EPSILON) {
+        seg->color *= Le;
+        seg->shouldTerminate = true;
+        return;
+    }
+
+    thrust::default_random_engine rng = MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
+
+    bool isDielectric = (mat->transmission > 0.0f);
+    BSDFSample s = isDielectric
+        ? SampleDielectricBSDF(isect, seg, mat, texs, rng)
+        : SampleOpaqueBSDF(isect, seg, mat, texs, rng);
+
+    if (s.pdf <= 0.f) { seg->color = glm::vec3(0); seg->shouldTerminate = true; return; }
+    ShadeUnifiedAdvance(isect, seg, mat, texs, s);
 }
 
 // maps a direction on the unit sphere to equirectangular uwv
