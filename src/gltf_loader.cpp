@@ -697,7 +697,7 @@ namespace {
             auto val = itTR->second.Get("transmissionFactor");
             if (val.IsNumber()) {
                 outM.transmission = (float)val.Get<double>();
-                outM.baseColor = glm::vec3(1.0f); // hack to make gltf with old opacity to work
+                //outM.baseColor = glm::vec3(1.0f); // hack to make gltf with old opacity to work
             }
         }
     }
