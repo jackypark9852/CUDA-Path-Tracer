@@ -393,7 +393,7 @@ DEVICE_INLINE void ShadeAlbedoImpl(
     Material* mat = materials + isect->materialId;
 
     glm::vec3 c = SampleBaseColor(mat, textures, isect->uv);
-    seg->color = (isect->t > 0.0f) ? c : glm::vec3(0.0f);
+    seg->color = (isect->t > 0.0f) ? c : glm::vec3(1.0f);
     seg->shouldTerminate = true;
 }
 
