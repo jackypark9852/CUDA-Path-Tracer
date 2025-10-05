@@ -1,0 +1,32 @@
+{
+    "Materials":
+    {
+        "diffuse_white":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.729, 0.729, 0.729]
+        }
+    },
+    
+    "Camera":
+    {
+        "RES":[800, 800],
+        "FOVY":45.0,
+        "ITERATIONS":10000,
+        "DEPTH":12,
+        "FILE":"magnum",
+        "EYE":[0.0, 1.0,1.0],
+        "LOOKAT":[0.0,0.0,0.0],
+        "UP":[0.0,1.0,0.0]
+    },
+    
+
+    "Imports": [
+        { "PATH": "./models/vintage_video_camera_4k/vintage_video_camera_4k.gltf", "TRANS": [0.0, 0, 0.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [1, 1, 1]}
+    ],
+    
+    "EnvironmentMap":
+    {
+        "Path": "./textures/brown_photostudio_02_4k.hdr"
+    }
+}

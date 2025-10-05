@@ -10,9 +10,9 @@
     
     "Camera":
     {
-        "RES":[1920, 1080],
+        "RES":[2560, 1440],
         "FOVY":45.0,
-        "ITERATIONS":4000,
+        "ITERATIONS":10000,
         "DEPTH":12,
         "FILE":"camera",
         "EYE":[0.0,5.0,10.5],
@@ -22,7 +22,7 @@
     
 
     "Imports": [
-        { "PATH": "./models/camera/scene.gltf", "TRANS": [0.0, -40.0, 20.0], "ROTAT": [0.0, 0.0, 0.0], "SCALE": [30, 30, 30]}
+        { "PATH": "./models/camera/scene.gltf", "TRANS": [0.0, -42.0, 20.0], "ROTAT": [0.0, 120.0, 0.0], "SCALE": [30, 30, 30]}
     ],
     
     "EnvironmentMap":
