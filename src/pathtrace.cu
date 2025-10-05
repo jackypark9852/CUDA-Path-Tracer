@@ -341,7 +341,7 @@ __device__ inline void TraverseSceneBvh(
                 const int nodeIdx = stack[--sp];
                 const BvhNode node = dp.bvhNodes[nodeIdx];
                 
-                if (!RayAABBIntersection(node.aabbMin, node.aabbMax, objRay, bestT_os)) continue;
+                if (!RayAABBIntersection(node.aabb, objRay, bestT_os)) continue;
 
                 if (node.triCount > 0) { // is a leaf node
                     const uint32_t start = node.leftFirst;

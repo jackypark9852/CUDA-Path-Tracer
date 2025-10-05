@@ -34,13 +34,6 @@ bool ConstructBVH(
 	return true;
 }
 
-inline void updateAABBs(glm::vec3& aabbMin, glm::vec3& aabbMax, glm::vec3 pos) {
-	for (uint32_t i = 0; i < 3; ++i) {
-		aabbMin[i] = fminf(aabbMin[i], pos[i]);
-		aabbMax[i] = fmaxf(aabbMax[i], pos[i]);
-	}
-}
-
 void UpdateNodeBounds(
 	uint32_t nodeIdx,
 	const std::vector<glm::vec3>& positions,
@@ -48,18 +41,62 @@ void UpdateNodeBounds(
 	std::vector<BvhNode>& outBvhNodes)
 {
 	BvhNode& node = outBvhNodes[nodeIdx];
-	node.aabbMin = glm::vec3(1e30f);
-	node.aabbMax = glm::vec3(-1e30f);
+	AABB& aabb = node.aabb;
+	aabb.minBounds = glm::vec3(FLT_MAX);
+	aabb.maxBounds = glm::vec3(FLT_MIN);
 	for (uint32_t i = node.leftFirst; i < node.leftFirst + node.triCount; i++)
 	{
 		glm::vec3 v0 = positions[indices[i * 3 + 0]];
 		glm::vec3 v1 = positions[indices[i * 3 + 1]];
 		glm::vec3 v2 = positions[indices[i * 3 + 2]];
-		updateAABBs(node.aabbMin, node.aabbMax, v0);
-		updateAABBs(node.aabbMin, node.aabbMax, v1);
-		updateAABBs(node.aabbMin, node.aabbMax, v2);
+		node.aabb.grow(v0);
+		node.aabb.grow(v1);
+		node.aabb.grow(v2);
 	}
 }
+
+void FindSplitPlaneNaive(const BvhNode& currentNode, int& axis, float& splitPos) {
+	// find split position and axis
+	glm::vec3 extent = currentNode.aabb.maxBounds - currentNode.aabb.minBounds;
+	axis = 0;
+	if (extent.y > extent.x) axis = 1;
+	if (extent.z > extent[axis]) axis = 2;
+	if (extent[axis] <= 0.0f) return; // degenerate; make leaf
+
+	splitPos = currentNode.aabb.minBounds[axis] + extent[axis] * 0.5f;
+}
+
+float EvaluateSAH(
+	const BvhNode& currentNode,
+	const std::vector<glm::vec3>& positions,
+	std::vector<glm::vec3>& centroids,
+	std::vector<uint32_t>& indices,
+	int& axis,
+	float& splitPos)
+{
+	// split prims 
+	int start = static_cast<int>(currentNode.leftFirst);
+	int end = start + static_cast<int>(currentNode.triCount);
+	AABB leftBox{}, rightBox{};
+	int leftCount = 0, rightCount = 0;
+	for (uint32_t i = start; i < end; ++i) {
+		glm::vec3 v0 = positions[indices[i * 3 + 0]];
+		glm::vec3 v1 = positions[indices[i * 3 + 1]];
+		glm::vec3 v2 = positions[indices[i * 3 + 2]];
+
+		AABB& box = (centroids[i][axis] < splitPos) ? leftBox : rightBox;
+		int& count = (centroids[i][axis] < splitPos) ? leftCount : rightCount;
+
+		count++;
+		box.grow(v0);
+		box.grow(v1);
+		box.grow(v2);
+	}
+
+	float cost = leftCount * leftBox.area() + rightCount * rightBox.area();
+	return cost > 0 ? cost : 1e30;
+}
+
 
 void Subdivide(
 	uint32_t nodeIdx,
@@ -71,13 +108,9 @@ void Subdivide(
 	BvhNode& currentNode = outBvhNodes[nodeIdx];
 
 	// find split position and axis
-	glm::vec3 extent = currentNode.aabbMax - currentNode.aabbMin;
-	int axis = 0;
-	if (extent.y > extent.x) axis = 1;
-	if (extent.z > extent[axis]) axis = 2;
-	if(extent[axis] <= 0.0f) return; // degenerate; make leaf
-
-	float splitPos = currentNode.aabbMin[axis] + extent[axis] * 0.5f;
+	int axis; 
+	float splitPos; 
+	FindSplitPlaneNaive(currentNode, axis, splitPos);
 
 	// split prims 
 	int i = static_cast<int>(currentNode.leftFirst);

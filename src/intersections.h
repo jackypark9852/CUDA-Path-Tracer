@@ -1,7 +1,7 @@
 #pragma once
 
 #include "sceneStructs.h"
-
+#include "bvh.h"
 #include <glm/glm.hpp>
 #include <glm/gtx/intersect.hpp>
 
@@ -80,7 +80,6 @@ __host__ __device__ bool RayTriangleIntersect(
 __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3); 
 
 __host__ __device__ bool RayAABBIntersection(
-    glm::vec3 aabbMin,
-    glm::vec3 aabbMax,
+    AABB aabb,
     Ray r,
     float t);

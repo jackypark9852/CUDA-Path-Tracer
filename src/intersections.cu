@@ -174,11 +174,12 @@ __host__ __device__ glm::vec3 Barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t
 }
 
 __host__ __device__ bool RayAABBIntersection(
-    glm::vec3 aabbMin,
-    glm::vec3 aabbMax,
+    AABB aabb,
     Ray r, 
     float t) 
 {
+    glm::vec3 aabbMin = aabb.minBounds; 
+    glm::vec3 aabbMax = aabb.maxBounds; 
     float tx1 = (aabbMin.x - r.origin.x) / r.direction.x;
     float tx2 = (aabbMax.x - r.origin.x) / r.direction.x;
     float tmin = fminf(tx1, tx2); 
