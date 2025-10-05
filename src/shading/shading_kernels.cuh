@@ -288,6 +288,14 @@ DEVICE_INLINE void ShadePbrImpl(
         return;
     }
 
+    // early outr if hit emissive material
+    glm::vec3 Le = SampleEmissive(mat, textures, isect->uv);
+    if ((Le.x > EPSILON || Le.y > EPSILON|| Le.z > EPSILON)) {
+        seg->color *= Le;      // convert throughput to radiance
+        seg->shouldTerminate = true;
+        return;
+    }
+
     thrust::default_random_engine rng =
         MakeSeededRandomEngine(iter, idx, seg->remainingBounces);
 

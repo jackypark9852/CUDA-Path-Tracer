@@ -1,6 +1,6 @@
 {
   "Materials": {
-    "mat_glass": { "TYPE": "Pbr", "RGB": [1.0, 1.0, 1.0], "METALLIC": 0.0, "ROUGHNESS": 0.2, "IOR": 1.2, "EMITTANCE": 0.0, "TRANSMISSIVE": 1.0 }
+    "mat_glass": { "TYPE": "Pbr", "RGB": [0.0383003049, 0.0383003049, 0.0383003049], "METALLIC": 0.0, "ROUGHNESS": 0.0, "IOR": 1.2, "EMITTANCE": 0.0, "TRANSMISSIVE": 1.0 }
   },
 
   "Camera": {

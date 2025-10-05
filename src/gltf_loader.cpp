@@ -248,17 +248,16 @@ DeviceGltfScene UploadGltfData(
             if (dp.numVertices == 0) {
                 // positions required; write empty dp and continue to avoid crash
                 cudaMemcpy(dprims + pi, &dp, sizeof(DevicePrimitive), cudaMemcpyHostToDevice);
-                checkCUDAError("cudaMemcpy empty primitive");
+                cudaDeviceSynchronize();
                 continue;
             }
             {
                 glm::vec3* dpos = nullptr;
                 size_t bytes = sizeof(glm::vec3) * hp.positions.size();
                 cudaMalloc((void**)&dpos, bytes);
-                checkCUDAError("cudaMalloc positions");
                 ds.ownedVertexBuffers.push_back(dpos);
                 cudaMemcpy(dpos, hp.positions.data(), bytes, cudaMemcpyHostToDevice);
-                checkCUDAError("cudaMemcpy positions");
+                cudaDeviceSynchronize();
                 dp.positions = dpos;
             }
 
@@ -267,22 +266,20 @@ DeviceGltfScene UploadGltfData(
                 glm::vec3* dnor = nullptr;
                 size_t bytes = sizeof(glm::vec3) * hp.normals.size();
                 cudaMalloc((void**)&dnor, bytes);
-                checkCUDAError("cudaMalloc normals");
                 ds.ownedVertexBuffers.push_back(dnor);
                 cudaMemcpy(dnor, hp.normals.data(), bytes, cudaMemcpyHostToDevice);
-                checkCUDAError("cudaMemcpy normals");
+                cudaDeviceSynchronize();
                 dp.normals = dnor;
             }
 
             // uvs (optional)
             if (!hp.uvs.empty()) {
                 glm::vec2* duv = nullptr;
-                size_t bytes = sizeof(glm::vec2) * hp.indices.size();
+                size_t bytes = sizeof(glm::vec2) * hp.uvs.size();
                 cudaMalloc((void**)&duv, bytes);
-                checkCUDAError("cudaMalloc indices");
                 ds.ownedVertexBuffers.push_back(duv);
                 cudaMemcpy(duv, hp.uvs.data(), bytes, cudaMemcpyHostToDevice);
-                checkCUDAError("cudaMemcpy indices");
+                cudaDeviceSynchronize();
                 dp.uvs = duv;
             }
 
@@ -291,10 +288,9 @@ DeviceGltfScene UploadGltfData(
                 uint32_t* didx = nullptr;
                 size_t bytes = sizeof(uint32_t) * hp.indices.size();
                 cudaMalloc((void**)&didx, bytes);
-                checkCUDAError("cudaMalloc indices");
                 ds.ownedVertexBuffers.push_back(didx);
                 cudaMemcpy(didx, hp.indices.data(), bytes, cudaMemcpyHostToDevice);
-                checkCUDAError("cudaMemcpy indices");
+                cudaDeviceSynchronize();
                 dp.indices = didx;
             }
 
@@ -302,16 +298,15 @@ DeviceGltfScene UploadGltfData(
                 BvhNode* dbvh = nullptr; 
                 size_t bytes = sizeof(BvhNode) * hp.bvhNodes.size(); 
                 cudaMalloc((void**)&dbvh, bytes);   
-                checkCUDAError("cudaMalloc bvh"); 
                 ds.ownedVertexBuffers.push_back(dbvh); 
                 cudaMemcpy(dbvh, hp.bvhNodes.data(), bytes, cudaMemcpyHostToDevice); 
-                checkCUDAError("cudaMemcpy bvh"); 
+                cudaDeviceSynchronize();
                 dp.bvhNodes = dbvh; 
             }
 
             // write primitive header
             cudaMemcpy(dprims + pi, &dp, sizeof(DevicePrimitive), cudaMemcpyHostToDevice);
-            checkCUDAError("cudaMemcpy primitive header");
+            cudaDeviceSynchronize();
         }
     }
 
@@ -642,8 +637,8 @@ namespace {
         outM.type = MaterialType::PBR;
         outM.baseColor = glm::vec3(1.f);
         outM.metallic = 0.f;
-        outM.roughness = 1.f;
-        outM.emissiveColor = glm::vec3(0.f);
+        outM.roughness = 0.f;
+        outM.emissiveFactor = glm::vec3(0.f);
         outM.emissiveTex = -1;
         outM.emissiveStrength = 1.f; // emissiveStrength default
         outM.ior = 1.5f;
@@ -651,7 +646,7 @@ namespace {
         outM.baseColorTex = -1;
         outM.metallicRoughnessTex = -1;
         outM.normalTex = -1;
-        outM.normalScale = 1.f;
+       outM.normalScale = 1.f;
 
         const auto& pmr = gm.pbrMetallicRoughness;
 
@@ -671,7 +666,7 @@ namespace {
             outM.metallicRoughnessTex = texOffset + pmr.metallicRoughnessTexture.index;
 
         if (!gm.emissiveFactor.empty()) {
-            outM.emissiveColor = glm::vec3(
+            outM.emissiveFactor = glm::vec3(
                 (float)gm.emissiveFactor[0],
                 (float)gm.emissiveFactor[1],
                 (float)gm.emissiveFactor[2]);
@@ -700,7 +695,10 @@ namespace {
         auto itTR = gm.extensions.find("KHR_materials_transmission");
         if (itTR != gm.extensions.end()) {
             auto val = itTR->second.Get("transmissionFactor");
-            if (val.IsNumber()) outM.transmission = (float)val.Get<double>();
+            if (val.IsNumber()) {
+                outM.transmission = (float)val.Get<double>();
+                outM.baseColor = glm::vec3(1.0f); // hack to make gltf with old opacity to work
+            }
         }
     }
 } // namespace

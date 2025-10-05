@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <cuda_runtime.h>
 #include "../utilities.h"
+#include "../sceneStructs.h"
 #include "shading_common.cuh"
 
 // device inline helper for cuda kernels
@@ -357,6 +358,23 @@ DEVICE_INLINE glm::vec3 SampleNormalTS(cudaTextureObject_t tex, glm::vec2 uv)
     float ny = 2.0f * t.y - 1.0f;
     float nz = sqrtf(fmaxf(0.0f, 1.0f - nx * nx - ny * ny));
     return glm::vec3(nx, ny, nz);
+}
+
+DEVICE_INLINE glm::vec3 SampleEmissive(
+    const Material* mat,
+    const cpt::Texture2D* textures,
+    const glm::vec2& uv)
+{
+    glm::vec3 e = mat->emissiveFactor;
+    if (mat->emissiveTex >= 0) {
+        float4 texel = tex2D<float4>(textures[mat->emissiveTex].texObj, uv.x, uv.y);
+        glm::vec3 t = MakeVec3(texel);
+        t.x = srgb_to_linear(t.x);
+        t.y = srgb_to_linear(t.y);
+        t.z = srgb_to_linear(t.z);
+        e *= t;
+    }
+    return mat->emissiveStrength * e; // final linear emissive radiance
 }
 
 DEVICE_INLINE

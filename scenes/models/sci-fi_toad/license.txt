@@ -1,0 +1,11 @@
+Model Information:
+* title:	Sci-fi Toad
+* source:	https://sketchfab.com/3d-models/sci-fi-toad-a4beb5c0c4b548108b28ef4a891ccec7
+* author:	YuryTheCreator (https://sketchfab.com/YuryTheCreator)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Sci-fi Toad" (https://sketchfab.com/3d-models/sci-fi-toad-a4beb5c0c4b548108b28ef4a891ccec7) by YuryTheCreator (https://sketchfab.com/YuryTheCreator) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

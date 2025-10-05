@@ -25,7 +25,7 @@ struct Material
     
     glm::vec3 baseColor;
     float ior;
-    glm::vec3 emissiveColor; 
+    glm::vec3 emissiveFactor; 
     float emissiveStrength; 
     float metallic;
     float roughness;
@@ -52,7 +52,7 @@ inline Material MakeDefaultMaterial() {
     m.baseColor = glm::vec3(0.063f, 0.024f, 0.624f);
     m.metallic = 0.0f;
     m.roughness = 1.0f;
-    m.emissiveColor = glm::vec3(0.f);
+    m.emissiveFactor = glm::vec3(0.f);
     m.emissiveTex = -1;
     m.emissiveStrength = 0.f;
     m.ior = 1.5f;

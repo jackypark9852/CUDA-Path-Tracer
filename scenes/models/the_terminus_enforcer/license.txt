@@ -1,0 +1,11 @@
+Model Information:
+* title:	The Terminus Enforcer
+* source:	https://sketchfab.com/3d-models/the-terminus-enforcer-283aa589cca54e03b3c2396179eabbe8
+* author:	TooManyDemons (https://sketchfab.com/toomanydemons)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "The Terminus Enforcer" (https://sketchfab.com/3d-models/the-terminus-enforcer-283aa589cca54e03b3c2396179eabbe8) by TooManyDemons (https://sketchfab.com/toomanydemons) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
