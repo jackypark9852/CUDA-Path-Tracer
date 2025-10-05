@@ -169,22 +169,31 @@ float FindSplitPlaneSAH(
 	return bestCost; 
 }
 
+#ifndef MIN_TRI_COUNT
+#define MIN_TRI_COUNT 2
+#endif
 
 void Subdivide(
 	uint32_t nodeIdx,
 	const std::vector<glm::vec3>& positions,
 	std::vector<glm::vec3>& centroids,
-	std::vector<uint32_t>& indices,             // rearranged  
+	std::vector<uint32_t>& indices,
 	std::vector<BvhNode>& outBvhNodes           // cleared and populated 
 ) {
 	BvhNode& currentNode = outBvhNodes[nodeIdx];
+	if (currentNode.triCount < 2u * static_cast<uint32_t>(MIN_TRI_COUNT)) {
+		return; // keep as leaf to respect the minimum per leaf
+	}
+
 
 	// find split position and axis
 	int axis = 0; 
 	float splitPos = 0.0f; 
 
 	//FindSplitPlaneNaive(currentNode, axis, splitPos);
-	FindSplitPlaneSAH(currentNode, positions, centroids, indices, axis, splitPos); 
+	float bestCost = FindSplitPlaneSAH(currentNode, positions, centroids, indices, axis, splitPos); 
+	float parentCost = static_cast<float>(currentNode.triCount) * outBvhNodes[nodeIdx].aabb.area();
+	if (bestCost >= parentCost) return;
 
 	// split prims 
 	int i = static_cast<int>(currentNode.leftFirst);

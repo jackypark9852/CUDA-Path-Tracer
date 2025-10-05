@@ -10,10 +10,10 @@
     
     "Camera":
     {
-        "RES":[2560,1440],
+        "RES":[800,800],
         "FOVY":45.0,
         "ITERATIONS":10000,
-        "DEPTH":12,
+        "DEPTH":5,
         "FILE":"medieval",
         "EYE":[0.0, 2.0, -3.5],
         "LOOKAT":[0.0,2.0,0.0],
