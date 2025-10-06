@@ -151,54 +151,51 @@ void pathtraceFree()
     delete[] hst_endIdx; 
 }
 
-/**
-* Generate PathSegments with rays from the camera through the screen into the
-* scene, which is the first bounce of rays.
-*
-* Antialiasing - add rays for sub-pixel sampling
-* motion blur - jitter rays "in time"
-* lens effect - jitter ray origin positions based on a lens
-*/
 __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments)
 {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= cam.resolution.x || y >= cam.resolution.y) return;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-        PathSegment& segment = pathSegments[index];
+    int index = x + y * cam.resolution.x;
+    PathSegment& seg = pathSegments[index];
+    seg.color = glm::vec3(1.0f);
+    seg.pixelIndex = index;
+    seg.remainingBounces = traceDepth;
+    seg.shouldTerminate = false;
 
-        segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
+    thrust::default_random_engine rng = MakeSeededRandomEngine(iter, index, traceDepth);
+    thrust::uniform_real_distribution<float> u01(0.0f, 1.0f);
 
-        // simple antialiasing by jittering the ray
-        thrust::default_random_engine rng = MakeSeededRandomEngine(iter, index, traceDepth); 
-        thrust::uniform_real_distribution u01(-0.5f, 0.5f); 
+    // jitter for stochastic aa
+    float jitterX = (u01(rng) - 0.5f);
+    float jitterY = (u01(rng) - 0.5f);
+    float px = float(x) + jitterX;
+    float py = float(y) + jitterY;
 
-        float jitterX = u01(rng); 
-        float jitterY = u01(rng); 
+    // compute focal point
+    glm::vec3 d_pinhole = glm::normalize(
+        cam.view
+        - cam.right * cam.pixelLength.x * (px - 0.5f * float(cam.resolution.x))
+        - cam.up * cam.pixelLength.y * (py - 0.5f * float(cam.resolution.y))
+    );
 
-        float jitteredX = (float)x + jitterX; 
-        float jitteredY = (float)y + jitterY;
+    float denom = glm::dot(d_pinhole, cam.view);
+    float t_focus = cam.focusDist / fmaxf(fabsf(denom), 1e-6f);
+    glm::vec3 focalPoint = cam.position + d_pinhole * t_focus;
 
-        // jitter ray origin for dof
-        glm::vec3 origin = cam.position;
-        if (cam.lensRadius > 0.0f) {
-            glm::vec3 d = cam.lensRadius * RandomInUnitDisk(rng);
-            glm::vec3 offset = d.x * cam.right + d.y * cam.up;
-            origin += offset;
-        }
-        segment.ray.origin = origin;
-        glm::vec3 newView = glm::normalize(cam.lookAt - origin); 
-        segment.ray.direction = glm::normalize(newView
-            - cam.right * cam.pixelLength.x * ((float)jitteredX - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)jitteredY - (float)cam.resolution.y * 0.5f)
-        );
-        
-        segment.pixelIndex = index;
-        segment.remainingBounces = traceDepth;
-        segment.shouldTerminate = false;   
+    // simualte random ray starting point on thin lens
+    glm::vec3 origin = cam.position;
+    if (cam.lensRadius > 0.0f) {
+        glm::vec3 d = cam.lensRadius * RandomInUnitDisk(rng);
+        glm::vec3 offset = d.x * cam.right + d.y * cam.up;
+        origin += offset;
     }
+
+    seg.ray.origin = origin;
+    seg.ray.direction = glm::normalize(focalPoint - origin);
 }
+
 
 __device__ inline glm::vec3 XformPoint(const glm::mat4& m, const glm::vec3& p) {
     glm::vec4 r = m * glm::vec4(p, 1.f);

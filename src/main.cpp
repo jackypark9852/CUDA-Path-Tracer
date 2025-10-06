@@ -280,7 +280,27 @@ void RenderImGui()
     }
 
     ImGui::Separator();
+    if (ImGui::CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        Camera& cam = renderState->camera;
+        bool changed = false;
 
+        changed |= ImGui::SliderFloat("Focal Distance", &cam.focusDist, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+
+        float aperture = cam.lensRadius * 2.0f;
+        if (ImGui::SliderFloat("Aperture Size", &aperture, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
+        {
+            cam.lensRadius = 0.5f * aperture;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            camchanged = true;
+            // If you recompute derived fields when camera params change:
+            cam.UpdateDerived(cam.fov.y);
+        }
+    }
     //ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
     //ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
 
