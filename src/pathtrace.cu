@@ -168,7 +168,6 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         int index = x + (y * cam.resolution.x);
         PathSegment& segment = pathSegments[index];
 
-        segment.ray.origin = cam.position;
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
         // simple antialiasing by jittering the ray
@@ -181,11 +180,20 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         float jitteredX = (float)x + jitterX; 
         float jitteredY = (float)y + jitterY;
 
-        segment.ray.direction = glm::normalize(cam.view
+        // jitter ray origin for dof
+        glm::vec3 origin = cam.position;
+        if (cam.lensRadius > 0.0f) {
+            glm::vec3 d = cam.lensRadius * RandomInUnitDisk(rng);
+            glm::vec3 offset = d.x * cam.right + d.y * cam.up;
+            origin += offset;
+        }
+        segment.ray.origin = origin;
+        glm::vec3 newView = glm::normalize(cam.lookAt - origin); 
+        segment.ray.direction = glm::normalize(newView
             - cam.right * cam.pixelLength.x * ((float)jitteredX - (float)cam.resolution.x * 0.5f)
             - cam.up * cam.pixelLength.y * ((float)jitteredY - (float)cam.resolution.y * 0.5f)
         );
-
+        
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
         segment.shouldTerminate = false;   

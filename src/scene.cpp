@@ -191,7 +191,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     camera.focusDist = (cameraData.contains("FOCUS_DIST")) ? 
         cameraData["FOCUS_DIST"] : glm::length(camera.lookAt - camera.position);
     camera.lensRadius = (cameraData.contains("LENS_RADIUS"))? 
-        cameraData["LENS_RADIUS"] : 0.01f * camera.focusDist;
+        cameraData["LENS_RADIUS"] : 0.03f * camera.focusDist;
     
     camera.UpdateDerived(fovy); 
     
