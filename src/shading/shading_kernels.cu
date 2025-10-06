@@ -68,7 +68,7 @@ __global__ void KernShadeAlbedo(int iter, int n, ShadeableIntersection* intersec
         pathSegments);
 }
 
-// for albedo aov
+// for roughness aov
 __global__ void KernShadeRoughness(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -81,7 +81,7 @@ __global__ void KernShadeRoughness(int iter, int n, ShadeableIntersection* inter
         pathSegments);
 }
 
-// for albedo aov
+// for metallic aov
 __global__ void KernShadeMetallic(int iter, int n, ShadeableIntersection* intersections, Material* materials, cpt::Texture2D* textures, PathSegment* pathSegments)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
