@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include "glm/glm.hpp"
 #include <string>
 #include <vector>
 
+#include "glm/glm.hpp"
+#include "utilities.h"
+ 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
 enum class MaterialType
@@ -96,11 +98,47 @@ struct Camera
     glm::ivec2 resolution;
     glm::vec3 position;
     glm::vec3 lookAt;
+
+    float lensRadius;
+    float focusDist;
+
     glm::vec3 view;
     glm::vec3 up;
     glm::vec3 right;
     glm::vec2 fov;
     glm::vec2 pixelLength;
+    glm::vec3 horizontal;
+    glm::vec3 vertical;
+    glm::vec3 lowerLeftCorner;
+
+    void UpdateDerived(float fovy)
+    {
+        view = glm::normalize(lookAt - position);
+        right = glm::normalize(glm::cross(view, glm::vec3(0, 1, 0)));
+        up = glm::normalize(glm::cross(right, view));
+
+        // image plane
+        const float aspect = float(resolution.x) / float(resolution.y);
+        const float theta = glm::radians(fovy);
+        const float half_h = tanf(0.5f * theta);
+        const float half_w = aspect * half_h;
+
+        horizontal = 2.0f * half_w * focusDist * right;
+        vertical = 2.0f * half_h * focusDist * up;
+        lowerLeftCorner = position
+            - 0.5f * horizontal
+            - 0.5f * vertical
+            + focusDist * view;
+
+        //calculate fov based on resolution
+        float yscaled = tan(fovy * (PI / 180.0f));
+        float xscaled = (yscaled * resolution.x) / resolution.y;
+        float fovx = (atan(xscaled) * 180) / PI;
+
+        fov = glm::vec2(fovx, fovy);
+        pixelLength = glm::vec2(2 * xscaled / (float)resolution.x,
+            2 * yscaled / (float)resolution.y);
+    }
 };
 
 struct RenderState

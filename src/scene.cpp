@@ -176,35 +176,31 @@ void Scene::loadFromJSON(const std::string& jsonName)
     }
 
     // load camera settings
-    const auto& cameraData = data["Camera"];
-    Camera& camera = state.camera;
     RenderState& state = this->state;
-    camera.resolution.x = cameraData["RES"][0];
-    camera.resolution.y = cameraData["RES"][1];
-    float fovy = cameraData["FOVY"];
-    state.beautyIters = (cameraData.contains("ITERATIONS")) ? cameraData["ITERATIONS"] : DEFAULT_ITERS; 
-    state.aovIters = (cameraData.contains("AOV_ITERATIONS")) ? cameraData["AOV_ITERATIONS"] : DEFAULT_ITERS; 
-    state.traceDepth = cameraData["DEPTH"];
-    state.imageName = cameraData["FILE"];
+    Camera& camera = state.camera;
+        
+    const auto& cameraData = data["Camera"];
     const auto& pos = cameraData["EYE"];
     const auto& lookat = cameraData["LOOKAT"];
-    const auto& up = cameraData["UP"];
+    float fovy = cameraData["FOVY"];
+
     camera.position = glm::vec3(pos[0], pos[1], pos[2]);
     camera.lookAt = glm::vec3(lookat[0], lookat[1], lookat[2]);
-    camera.up = glm::vec3(up[0], up[1], up[2]);
+    camera.resolution.x = cameraData["RES"][0];
+    camera.resolution.y = cameraData["RES"][1];
+    camera.focusDist = (cameraData.contains("FOCUS_DIST")) ? 
+        cameraData["FOCUS_DIST"] : glm::length(camera.lookAt - camera.position);
+    camera.lensRadius = (cameraData.contains("LENS_RADIUS"))? 
+        cameraData["LENS_RADIUS"] : 0.01f * camera.focusDist;
+    
+    camera.UpdateDerived(fovy); 
+    
+    //set up render camera stuff 
+    state.beautyIters = (cameraData.contains("ITERATIONS")) ? cameraData["ITERATIONS"] : DEFAULT_ITERS;
+    state.aovIters = (cameraData.contains("AOV_ITERATIONS")) ? cameraData["AOV_ITERATIONS"] : DEFAULT_ITERS;
+    state.traceDepth = cameraData["DEPTH"];
+    state.imageName = cameraData["FILE"];
 
-    //calculate fov based on resolution
-    float yscaled = tan(fovy * (PI / 180));
-    float xscaled = (yscaled * camera.resolution.x) / camera.resolution.y;
-    float fovx = (atan(xscaled) * 180) / PI;
-    camera.fov = glm::vec2(fovx, fovy);
-
-    camera.view = glm::normalize(camera.lookAt - camera.position);
-    camera.right = glm::normalize(glm::cross(camera.view, camera.up));
-    camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
-        2 * yscaled / (float)camera.resolution.y);
-
-    //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.beauty.resize(arraylen);
     state.normal.resize(arraylen); 

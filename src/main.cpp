@@ -505,8 +505,9 @@ void runCuda()
         cam.right = r;
 
         cam.position = cameraPosition;
-        cameraPosition += cam.lookAt;
+        cameraPosition += cam.lookAt;   
         cam.position = cameraPosition;
+        cam.UpdateDerived(cam.fov.y);
         camchanged = false;
     }
 

@@ -123,3 +123,15 @@ __device__ __forceinline__ unsigned char to_u8(float x) {
     x = fminf(fmaxf(x, 0.0f), 1.0f);
     return static_cast<unsigned char>(x * 255.0f + 0.5f);
 }
+
+// from https://www.realtimerendering.com/raytracing/Ray%20Tracing%20in%20a%20Weekend.pdf
+__device__ __forceinline__ glm::vec3 RandomInUnitDisk(thrust::default_random_engine& rng) {
+    glm::vec3 p; 
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    
+    do {
+        p = 2.0f * glm::vec3(u01(rng), u01(rng), 0) - glm::vec3(1.0f, 1.0f, 0.0f); 
+    } while (dot(p, p) >= 1.0f);
+    
+    return p; 
+}
