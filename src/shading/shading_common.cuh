@@ -135,3 +135,10 @@ __device__ __forceinline__ glm::vec3 RandomInUnitDisk(thrust::default_random_eng
     
     return p; 
 }
+
+template <typename T>
+__device__ __forceinline__ void dswap(T& a, T& b) {
+    T tmp = a;
+    a = b;
+    b = tmp;
+}

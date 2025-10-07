@@ -1,0 +1,11 @@
+Model Information:
+* title:	Modern Garage
+* source:	https://sketchfab.com/3d-models/modern-garage-8a34c73da7914676b342a3a8782c4796
+* author:	Gary J.A. Lowell (https://sketchfab.com/dogtorque)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Modern Garage" (https://sketchfab.com/3d-models/modern-garage-8a34c73da7914676b342a3a8782c4796) by Gary J.A. Lowell (https://sketchfab.com/dogtorque) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

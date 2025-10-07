@@ -228,13 +228,13 @@ namespace cpt {
             rowBytes, h,
             cudaMemcpyHostToDevice, stream) != cudaSuccess) {
             clear(out);
-            checkCUDAError("cudaMemcpy2DToArrayAsync");
+            // checkCUDAError("cudaMemcpy2DToArrayAsync");
             return false;
         }
 
         if (!createTextureObject(out, d.sampler)) {
             clear(out);
-            checkCUDAError("createTextureObject");
+            // checkCUDAError("createTextureObject");
             return false;
         }
 
@@ -279,12 +279,12 @@ namespace cpt {
     void destroyTexture(Texture2D& t) {
         if (t.texObj) {
             cudaDestroyTextureObject(t.texObj);
-            checkCUDAError("cudaDestroyTextureObject");
+            // checkCUDAError("cudaDestroyTextureObject");
             t.texObj = 0;
         }
         if (t.array) {
             cudaFreeArray(t.array);
-            checkCUDAError("cudaFreeArray");
+            // checkCUDAError("cudaFreeArray");
             t.array = nullptr;
         }
         t.width = t.height = 0;
@@ -294,7 +294,7 @@ namespace cpt {
     static bool createArray(Texture2D& t, PixelFormat fmt, int w, int h) {
         auto ch = channelDesc(fmt);
         bool ret = cudaMallocArray(&t.array, &ch, w, h, cudaArrayDefault) == cudaSuccess; 
-        checkCUDAError("cudaMallocArray"); 
+        // checkCUDAError("cudaMallocArray"); 
         return ret;
     }
 

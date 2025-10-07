@@ -192,11 +192,11 @@ DeviceGltfScene UploadGltfData(
     ds.numMeshes = nMesh; 
 
     // allocate top-level arrays (not tracked in outGltfAllocs)
-    checkCUDAError("UploadGltfData Start; Seek errors before here");
+    //checkCUDAError("UploadGltfData Start; Seek errors before here");
     cudaMalloc((void**)&ds.instances, sizeof(DeviceInstance) * nInst);
-    checkCUDAError("cudaMalloc outDeviceInstances");
+    //checkCUDAError("cudaMalloc outDeviceInstances");
     cudaMalloc((void**)&ds.meshes, sizeof(DeviceMesh) * nMesh);
-    checkCUDAError("cudaMalloc outDeviceMeshes");
+    //checkCUDAError("cudaMalloc outDeviceMeshes");
 
     // upload instances
     for (size_t i = 0; i < nInst; ++i) {
@@ -206,7 +206,7 @@ DeviceGltfScene UploadGltfData(
         di.invWorld = hostInstances[i].invWorld; 
         di.normalXf = hostInstances[i].normalXf;
         cudaMemcpy(ds.instances + i, &di, sizeof(DeviceInstance), cudaMemcpyHostToDevice);
-        checkCUDAError("cudaMemcpy device instance");
+        //checkCUDAError("cudaMemcpy device instance");
     }
 
     // per-mesh primitives
@@ -217,7 +217,7 @@ DeviceGltfScene UploadGltfData(
         DevicePrimitive* dprims = nullptr;
         if (nprim > 0) {
             cudaMalloc((void**)&dprims, sizeof(DevicePrimitive) * nprim);
-            checkCUDAError("cudaMalloc device primitives array");
+            //checkCUDAError("cudaMalloc device primitives array");
             ds.ownedPrimArrays.push_back(dprims);
         }
 
@@ -226,7 +226,7 @@ DeviceGltfScene UploadGltfData(
         dmesh.numPrimitives = nprim;
 
         cudaMemcpy(ds.meshes + mi, &dmesh, sizeof(DeviceMesh), cudaMemcpyHostToDevice);
-        checkCUDAError("cudaMemcpy device mesh header");
+        // checkCUDAError("cudaMemcpy device mesh header");
 
         // per-primitive attribute buffers
         for (int pi = 0; pi < nprim; ++pi) {
@@ -317,12 +317,12 @@ void FreeDeviceGltfScene(DeviceGltfScene gltfScene)
 {
     for (void* primArray : gltfScene.ownedPrimArrays) {
         cudaFree(primArray); 
-        checkCUDAError("FreeGltfScene cudaFree primArray"); 
+        // checkCUDAError("FreeGltfScene cudaFree primArray"); 
     }
 
     for (void* vertBuffer : gltfScene.ownedVertexBuffers) {
         cudaFree(vertBuffer); 
-        checkCUDAError("FreeGltfScene cudaFree vertBuffer"); 
+        // checkCUDAError("FreeGltfScene cudaFree vertBuffer"); 
     }
 
     cudaFree(gltfScene.meshes); 

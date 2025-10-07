@@ -555,10 +555,10 @@ void runCuda()
     }
     else
     {
-        normalPass(renderState->aovIters);
-        albedoPass(renderState->aovIters);
-        roughnessPass(renderState->aovIters); 
-        metallicPass(renderState->aovIters); 
+        //normalPass(renderState->aovIters);
+        //albedoPass(renderState->aovIters);
+        //roughnessPass(renderState->aovIters); 
+        //metallicPass(renderState->aovIters); 
         saveImages();
         pathtraceFree();
         cudaDeviceReset();

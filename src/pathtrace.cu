@@ -308,13 +308,76 @@ __device__ inline void TraverseSceneNaiveGltf(
 
 inline __host__ __device__ bool isMiss(float t) { return t < 0.0f; }
 
+struct candidate_hit {
+    bool hit;
+    float t_ws;     // world t for pruning
+    float t_os;     // object t for per-instance pruning
+    int inst_idx;
+    int mesh_idx;
+    int prim_idx;
+    int i0, i1, i2; // triangle vertex indices
+    float u, v;     // barycentric
+};
+
+__device__ __forceinline__ void IniteCandidate(candidate_hit& c) {
+    c.hit = false; c.t_ws = FLT_MAX; c.t_os = FLT_MAX;
+    c.inst_idx = -1; c.mesh_idx = -1; c.prim_idx = -1;
+    c.i0 = c.i1 = c.i2 = -1; c.u = c.v = 0.f;
+}
+
+// choose near/far children
+__device__ __forceinline__ void OrderChildren(float& t0, float& t1,
+    uint32_t& i0, uint32_t& i1,
+    const BvhNode*& n0, const BvhNode*& n1) {
+    float k0 = isMiss(t0) ? FLT_MAX : t0;
+    float k1 = isMiss(t1) ? FLT_MAX : t1;
+    if ((k1 + EPSILON) < k0) {
+        dswap(t0, t1);
+        dswap(i0, i1);
+        dswap(n0, n1);
+    }
+}
+
+// compute final shading normal and uv once
+__device__ __forceinline__ void compute_final_shading(
+    const DeviceGltfScene& scene,
+    const DeviceInstance& inst,
+    const DevicePrimitive& dp,
+    const candidate_hit& c,
+    glm::vec3& n_ws_out,
+    glm::vec2& uv_out)
+{
+    const glm::mat4& Nxf = inst.normalXf;
+    const glm::vec3 v0 = dp.positions[c.i0];
+    const glm::vec3 v1 = dp.positions[c.i1];
+    const glm::vec3 v2 = dp.positions[c.i2];
+    const float u = c.u, v = c.v;
+
+    glm::vec3 ng_os = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+    glm::vec3 ns_os = dp.normals ?
+        glm::normalize(InterpVec3(dp.normals, c.i0, c.i1, c.i2, u, v)) :
+        ng_os;
+
+    glm::vec3 ng_ws = glm::normalize(XformVector(Nxf, ng_os));
+    glm::vec3 ns_ws = glm::normalize(XformVector(Nxf, ns_os));
+
+    if (glm::determinant(glm::mat3(inst.world)) < 0.0f) ng_ws = -ng_ws;
+    if (glm::dot(ns_ws, ng_ws) < 0.0f) ns_ws = -ns_ws;
+
+    n_ws_out = ns_ws;
+    uv_out = dp.uvs ? InterpVec2(dp.uvs, c.i0, c.i1, c.i2, u, v) : glm::vec2(0.f);
+}
+
+// main traversal
 __device__ inline void TraverseSceneBvh(
     const DeviceGltfScene& scene,
     const PathSegment& seg,
     HitState& hs)
 {
-    // fixed small stack; increase if your bvh gets deeper
-    int stack[64];
+    int stack[64]; // keep as-is; can be moved to shared later
+
+    candidate_hit best;
+    IniteCandidate(best);
 
     for (int ii = 0; ii < scene.numInstances; ++ii) {
         const DeviceInstance inst = scene.instances[ii];
@@ -323,31 +386,29 @@ __device__ inline void TraverseSceneBvh(
         const DeviceMesh dmesh = scene.meshes[inst.meshIndex];
         if (dmesh.numPrimitives <= 0) continue;
 
-        const glm::mat4& M = inst.world;
-        const glm::mat4& Mi = inst.invWorld;
-        const glm::mat4& Nxf = inst.normalXf;
-        
-        Ray objRay; 
-        objRay.origin = XformPoint(Mi, seg.ray.origin);
-        const glm::vec3 d_os_unnorm = XformVector(Mi, seg.ray.direction);
+        // os ray
+        Ray objRay;
+        objRay.origin = XformPoint(inst.invWorld, seg.ray.origin);
+        const glm::vec3 d_os_unnorm = XformVector(inst.invWorld, seg.ray.direction);
         const float dir_os_len = glm::length(d_os_unnorm);
-        // Guard against degenerate transforms
         if (dir_os_len <= 0.0f) continue;
         objRay.direction = d_os_unnorm / dir_os_len;
+
+        // start with a conservative os upper bound derived from current global ws best
         float bestT_os = (hs.tMin < FLT_MAX * 0.5f) ? (hs.tMin * dir_os_len) : FLT_MAX;
 
         for (int pi = 0; pi < dmesh.numPrimitives; ++pi) {
             const DevicePrimitive& dp = dmesh.primitives[pi];
             if (dp.numVertices <= 0 || dp.bvhNodes == nullptr) continue;
 
-            // root at index 0
             uint32_t sp = 0;
             const BvhNode* node = &dp.bvhNodes[0];
 
             while (true) {
-                if (node->triCount > 0) { // is a leaf node
+                if (node->triCount > 0) {
                     const uint32_t start = node->leftFirst;
                     const uint32_t end = start + node->triCount;
+
                     for (uint32_t triIdx = start; triIdx < end; ++triIdx) {
                         const int b = static_cast<int>(triIdx) * 3;
                         const int i0 = dp.indices[b + 0];
@@ -358,97 +419,76 @@ __device__ inline void TraverseSceneBvh(
                         const glm::vec3 v1 = dp.positions[i1];
                         const glm::vec3 v2 = dp.positions[i2];
 
-                        float t_os;
-                        glm::vec3 bary;
+                        float t_os; glm::vec3 bary;
                         if (!RayTriangleIntersect(v0, v1, v2, objRay.origin, objRay.direction, t_os, bary)) continue;
-
-                        // early reject against current per-instance OS bound
                         if (t_os >= bestT_os) continue;
 
-                        // convert to world-space distance to compare against global best hs.tMin
                         const glm::vec3 p_os = objRay.origin + t_os * objRay.direction;
-                        const glm::vec3 p_ws = XformPoint(M, p_os);
-                        const float tWorld = glm::length(p_ws - seg.ray.origin);
-                        if (tWorld >= hs.tMin) {
-                            // didn't beat the global world-space best; keep searching
-                            continue;
-                        }
+                        const glm::vec3 p_ws = XformPoint(inst.world, p_os);
+                        const float t_ws = glm::length(p_ws - seg.ray.origin);
+                        if (t_ws >= hs.tMin) continue;
 
-                        const float u = bary.y;
-                        const float v = bary.z;
-
-                        // geometric normal in object space
-                        glm::vec3 ng_os = glm::normalize(glm::cross(v1 - v0, v2 - v0));
-
-                        // shading normal in object space (use vertex normal if present)
-                        glm::vec3 ns_os = dp.normals ?
-                            glm::normalize(InterpVec3(dp.normals, i0, i1, i2, u, v)) :
-                            ng_os;  // fallback to geometric
-
-                        // transform both with the normal matrix (transpose(invWorld))
-                        glm::vec3 ng_ws = glm::normalize(XformVector(Nxf, ng_os));
-                        glm::vec3 ns_ws = glm::normalize(XformVector(Nxf, ns_os));
-
-                        // If the instance transform has a reflection (negative determinant),
-                        // triangle winding flips in world space. Align shading normal to geometric:
-                        if (glm::determinant(glm::mat3(inst.world)) < 0.0f) {
-                            ng_ws = -ng_ws;
-                        }
-
-                        // force shading normal to agree with geometric normal
-                        if (glm::dot(ns_ws, ng_ws) < 0.0f) ns_ws = -ns_ws;
-
-                        const glm::vec2 uv = dp.uvs ? InterpVec2(dp.uvs, i0, i1, i2, u, v)
-                            : glm::vec2(0.f);
-
-                        MaybeUpdateBest(tWorld, ns_ws, uv, inst.meshIndex, pi, hs);
-                        bestT_os = t_os;  // tighten OS pruning window within this instance
+                        // record only minimal data; update global ws best for pruning
+                        hs.tMin = t_ws;
+                        bestT_os = t_os;
+                        best.hit = true;
+                        best.t_ws = t_ws;
+                        best.t_os = t_os;
+                        best.inst_idx = ii;
+                        best.mesh_idx = inst.meshIndex;
+                        best.prim_idx = pi;
+                        best.i0 = i0; best.i1 = i1; best.i2 = i2;
+                        best.u = bary.y; best.v = bary.z;
                     }
 
                     if (sp == 0) break;
                     node = &dp.bvhNodes[stack[--sp]];
                 }
-                else { // is not a leaf node
+                else {
                     uint32_t child0Idx = node->leftFirst + 0;
                     uint32_t child1Idx = node->leftFirst + 1;
                     const BvhNode* child0 = &dp.bvhNodes[child0Idx];
                     const BvhNode* child1 = &dp.bvhNodes[child1Idx];
 
-                    // compute entry t for each child
                     float t0 = RayAABBIntersection(child0->aabb, objRay, bestT_os);
                     float t1 = RayAABBIntersection(child1->aabb, objRay, bestT_os);
 
-                    // if both miss, pop
-                    if (isMiss(t0) & isMiss(t1)) { // bitwise & avoids short-circuit divergence on GPUs
+                    if (isMiss(t0) & isMiss(t1)) {
                         if (sp == 0) break;
                         node = &dp.bvhNodes[stack[--sp]];
                         continue;
                     }
 
-                    // order near/far: treat miss (-1) as +inf
-                    float k0 = isMiss(t0) ? FLT_MAX : t0;
-                    float k1 = isMiss(t1) ? FLT_MAX : t1;
+                    OrderChildren(t0, t1, child0Idx, child1Idx, child0, child1);
 
-                    bool swapNeeded = (k1 + EPSILON) < k0;
-                    if (swapNeeded) {
-                        thrust::swap(child0, child1);
-                        thrust::swap(child0Idx, child1Idx);
-                        thrust::swap(t0, t1);
-                        thrust::swap(k0, k1);
-                    }
-
-                    // Visit near child
                     node = child0;
-
-                    // Push far child only if it's a hit and could still contain something closer
-                    if (!isMiss(t1) && t1 < bestT_os) {
-                        stack[sp++] = child1Idx;
-                    }
+                    if (!isMiss(t1) && t1 < bestT_os) stack[sp++] = child1Idx;
                 }
             }
         }
     }
+
+    if (!best.hit) {
+        hs.hit = false;
+        return;
+    }
+
+    // compute final shading once for the winner and write hs
+    const DeviceInstance inst = scene.instances[best.inst_idx];
+    const DeviceMesh     dmesh = scene.meshes[best.mesh_idx];
+    const DevicePrimitive dp = dmesh.primitives[best.prim_idx];
+
+    glm::vec3 n_ws; glm::vec2 uv;
+    compute_final_shading(scene, inst, dp, best, n_ws, uv);
+
+    hs.hit = true;
+    hs.nWs = n_ws;
+    hs.uv = uv;
+    hs.hitGeomIdx = -1;
+    hs.hitMeshIdx = best.mesh_idx;
+    hs.hitPrimIdx = best.prim_idx;
 }
+
 
 
 __global__ void ComputeIntersections(
@@ -710,7 +750,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // normal pass
     generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-    checkCUDAError("generate camera ray");
+    // checkCUDAError("generate camera ray");
 
     int depth = 0;
     PathSegment* dev_path_end = dev_paths + pixelcount;
@@ -718,11 +758,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // beauty pass
     generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-    checkCUDAError("generate camera ray");
+    // checkCUDAError("generate camera ray");
     bool iterationComplete = false;
     while (!iterationComplete)
     {
         cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
+
 
         dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
         ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
@@ -732,7 +773,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             static_cast<int>(hst_scene->geoms.size()),
             gltfScene,
             dev_intersections);
-        checkCUDAError("trace one bounce");
+        // checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
 #ifdef NORMAL
@@ -746,7 +787,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
                 dev_materials, 
                 dev_textures,
                 dev_paths);
-            checkCUDAError("shade normals");
+            // checkCUDAError("shade normals");
         }
 #else
         // regular shading path
@@ -785,7 +826,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     cudaMemcpy(hst_scene->state.beauty.data(), dev_beauty,
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
-    checkCUDAError("pathtrace");
+    // checkCUDAError("pathtrace");
 }
 
 void normalPass(int iterCount)
@@ -805,7 +846,7 @@ void normalPass(int iterCount)
     for(int iter = 0; iter < iterCount; ++iter) {
         // normal pass
         generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-        checkCUDAError("generate camera ray");
+        // checkCUDAError("generate camera ray");
 
         PathSegment* dev_path_end = dev_paths + pixelcount;
         int numPaths = static_cast<int>(dev_path_end - dev_paths);
@@ -820,7 +861,7 @@ void normalPass(int iterCount)
             static_cast<int>(hst_scene->geoms.size()),
             gltfScene,
             dev_intersections);
-        checkCUDAError("trace one bounce");
+        // checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
         const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
@@ -831,7 +872,7 @@ void normalPass(int iterCount)
             dev_materials, 
             dev_textures,
             dev_paths);
-        checkCUDAError("shade normals");
+        // checkCUDAError("shade normals");
 
         dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
         finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_normal, dev_paths);
@@ -860,7 +901,7 @@ void albedoPass(int iterCount)
     for (int iter = 0; iter < iterCount; ++iter) {
         // normal pass
         generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-        checkCUDAError("generate camera ray");
+        // checkCUDAError("generate camera ray");
 
         PathSegment* dev_path_end = dev_paths + pixelcount;
         int numPaths = static_cast<int>(dev_path_end - dev_paths);
@@ -875,7 +916,7 @@ void albedoPass(int iterCount)
             static_cast<int>(hst_scene->geoms.size()),
             gltfScene,
             dev_intersections);
-        checkCUDAError("trace one bounce");
+        // checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
         const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
@@ -886,7 +927,7 @@ void albedoPass(int iterCount)
             dev_materials, 
             dev_textures,
             dev_paths);
-        checkCUDAError("shade normals");
+        // checkCUDAError("shade normals");
 
         dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
         finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_albedo, dev_paths);
@@ -915,7 +956,7 @@ void roughnessPass(int iterCount)
     for (int iter = 0; iter < iterCount; ++iter) {
         // normal pass
         generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-        checkCUDAError("generate camera ray");
+        // checkCUDAError("generate camera ray");
 
         PathSegment* dev_path_end = dev_paths + pixelcount;
         int numPaths = static_cast<int>(dev_path_end - dev_paths);
@@ -930,7 +971,7 @@ void roughnessPass(int iterCount)
             static_cast<int>(hst_scene->geoms.size()),
             gltfScene,
             dev_intersections);
-        checkCUDAError("trace one bounce");
+        // checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
         const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
@@ -941,7 +982,7 @@ void roughnessPass(int iterCount)
             dev_materials,
             dev_textures,
             dev_paths);
-        checkCUDAError("shade normals");
+        // checkCUDAError("shade normals");
 
         dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
         finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_roughness, dev_paths);
@@ -968,7 +1009,7 @@ void metallicPass(int iterCount)
     for (int iter = 0; iter < iterCount; ++iter) {
         // normal pass
         generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
-        checkCUDAError("generate camera ray");
+        // checkCUDAError("generate camera ray");
 
         PathSegment* dev_path_end = dev_paths + pixelcount;
         int numPaths = static_cast<int>(dev_path_end - dev_paths);
@@ -994,7 +1035,7 @@ void metallicPass(int iterCount)
             dev_materials,
             dev_textures,
             dev_paths);
-        checkCUDAError("shade normals");
+        // checkCUDAError("shade normals");
 
         dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
         finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_metallic, dev_paths);

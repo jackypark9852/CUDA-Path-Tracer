@@ -1,0 +1,33 @@
+{
+    "Materials":
+    {
+        "diffuse_white":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.729, 0.729, 0.729]
+        }
+    },
+    
+    "Camera":
+    {
+        "RES":[1920, 1080],
+        "FOVY":45.0,
+        "ITERATIONS":5000,
+        "DEPTH":1,
+        "FILE":"magnemite",
+        "EYE":[-3.0,-2.0, 12],
+        "LOOKAT":[0.0,0.0,0.0],
+        "UP":[0.0,1.0,0.0]
+    },
+    
+
+    "Imports": [
+        { "PATH": "./models/f1_2024_mclaren_mcl38/scene.gltf", "TRANS": [-4.0, 0.0, 0.0], "ROTAT": [0.0, 60.0, 0.0], "SCALE": [4, 4, 4]},
+        { "PATH": "./models/garage/scene.gltf", "TRANS": [0.0, 5.0, 0.0], "ROTAT": [0.0, -30.0, 0.0], "SCALE": [10, 10, 10]}
+    ],
+    
+    "EnvironmentMap":
+    {
+        "Path": "./textures/brown_photostudio_02_4k.hdr"
+    }
+}
