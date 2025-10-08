@@ -562,29 +562,30 @@ __global__ void ComputeIntersections(
     }
 }
 
-// comparator for material sorting
+// hits (t >= 0) first, then by materialType, then by t ascending
 struct IsectKeyLess {
-    __host__ __device__
+    __host__ __device__ __forceinline__
         bool operator()(const ShadeableIntersection& a,
             const ShadeableIntersection& b) const
     {
-        const bool aMiss = (a.t < -EPSILON);
-        const bool bMiss = (b.t < -EPSILON);
+        const bool aHit = (a.t >= 0.0f);
+        const bool bHit = (b.t >= 0.0f);
 
         // hits before miss
-        if (aMiss != bMiss) return !aMiss;
+        if (aHit != bHit) return aHit;
 
-        // both hits, then sort by material id
+        // both hit or both miss:
+        if (a.materialType != b.materialType)
+            return a.materialType < b.materialType;
 
-        if (!aMiss) {
-            if (a.materialType != b.materialType) return a.materialType < b.materialType;
-            return a.t < b.t;
-        }
+        const float big = 1e30f;
+        const float ta = aHit ? a.t : big;
+        const float tb = bHit ? b.t : big;
 
-        // both misses, just sort based on distance
-        return a.t < b.t;
+        return ta < tb;
     }
 };
+
 
 __global__ void kernResetIntBuffer(int N, int* intBuffer, int value) {
     int index = (blockIdx.x * blockDim.x) + threadIdx.x;
