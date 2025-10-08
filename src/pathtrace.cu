@@ -13,6 +13,7 @@
 #include <thrust/partition.h>
 #include <thrust/random.h>
 
+#include "cuda_timing.h"
 #include "gltf/gltf_structs.h"
 #include "gltf_loader.h"
 #include "intersections.h"
@@ -634,61 +635,66 @@ static void MaterialSortAndShade(
     int* hst_startIdx,
     int* hst_endIdx)
 {
-    thrust::sort_by_key(
-        thrust::device,
-        dev_intersections,
-        dev_intersections + numPaths,
-        dev_paths,
-        IsectKeyLess());
+    TIME_CUDA("sort_by_material", 
+        thrust::sort_by_key(
+            thrust::device,
+            dev_intersections,
+            dev_intersections + numPaths,
+            dev_paths,
+            IsectKeyLess()));
 
     const int materialTypeCount = static_cast<int>(MaterialType::COUNT);
     const dim3 blocksMat((materialTypeCount + blockSize1d - 1) / blockSize1d);
-    kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_startIdx, -1);
-    kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_endIdx, -1);
+    TIME_CUDA("reset_int_buffer", 
+        kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_startIdx, -1);
+        kernResetIntBuffer KERNEL_ARGS2(blocksMat, blockSize1d)(materialTypeCount, dev_endIdx, -1));
 
     const dim3 blocksTrace((numPaths + blockSize1d - 1) / blockSize1d);
-    kernIdentifyMaterialTypeStartEnd KERNEL_ARGS2(blocksTrace, blockSize1d)(
-        numPaths, dev_intersections, dev_startIdx, dev_endIdx);
+    TIME_CUDA("identify_material_start_end",
+        kernIdentifyMaterialTypeStartEnd KERNEL_ARGS2(blocksTrace, blockSize1d)(
+            numPaths, dev_intersections, dev_startIdx, dev_endIdx));
+    
+    TIME_CUDA("start_end_index_copy",
+        cudaMemcpy(hst_startIdx, dev_startIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(hst_endIdx, dev_endIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost));
 
-    cudaMemcpy(hst_startIdx, dev_startIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hst_endIdx, dev_endIdx, materialTypeCount * sizeof(int), cudaMemcpyDeviceToHost);
+    TIME_CUDA("shade_materials",
+        for (int mt = 0; mt < materialTypeCount; ++mt) {
+            const int start = hst_startIdx[mt];
+            const int end = hst_endIdx[mt];
 
-    for (int mt = 0; mt < materialTypeCount; ++mt) {
-        const int start = hst_startIdx[mt];
-        const int end = hst_endIdx[mt];
+            if (start < 0 || end < start) continue;
 
-        if (start < 0 || end < start) continue;
+            const int count = end - start + 1;
+            ShadeableIntersection* isectSlice = dev_intersections + start;
+            PathSegment* pathSlice = dev_paths + start;
 
-        const int count = end - start + 1;
-        ShadeableIntersection* isectSlice = dev_intersections + start;
-        PathSegment* pathSlice = dev_paths + start;
+            const int blocksRange = (count + blockSize1d - 1) / blockSize1d;
 
-        const int blocksRange = (count + blockSize1d - 1) / blockSize1d;
-
-        switch (static_cast<MaterialType>(mt)) {
-        case MaterialType::EMISSIVE:
-            KernShadeEmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
-            break;
-        case MaterialType::DIFFUSE:
-            KernShadeDiffuse KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
-            break;
-        case MaterialType::SPECULAR:
-            KernShadeSpecular KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
-            break;
-        case MaterialType::TRANSMISSIVE:
-            KernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
-            break;
-        case MaterialType::PBR:
-            KernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials, dev_textures); 
-            break;
-        case MaterialType::ENVMAP:
-            KernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap); 
-            break; 
-        default:
-            KernShadeError KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice); 
-            break;
-        }
-    }
+            switch (static_cast<MaterialType>(mt)) {
+            case MaterialType::EMISSIVE:
+                KernShadeEmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+                break;
+            case MaterialType::DIFFUSE:
+                KernShadeDiffuse KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+                break;
+            case MaterialType::SPECULAR:
+                KernShadeSpecular KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+                break;
+            case MaterialType::TRANSMISSIVE:
+                KernShadeTransmissive KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials);
+                break;
+            case MaterialType::PBR:
+                KernShadePbr KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, dev_materials, dev_textures);
+                break;
+            case MaterialType::ENVMAP:
+                KernShadeEnvMap KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice, *envMap);
+                break;
+            default:
+                KernShadeError KERNEL_ARGS2(blocksRange, blockSize1d)(iter, count, isectSlice, pathSlice);
+                break;
+            }
+        });
 }
 
 // pack averaged glm::vec3 into pitched float4 buffer (RGBA32F)
@@ -751,7 +757,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     int numPaths = static_cast<int>(dev_path_end - dev_paths);
 
     // beauty pass
-    generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths);
+    TIME_CUDA("gen_rays",
+        generateRayFromCamera KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(cam, iter, traceDepth, dev_paths));
     bool iterationComplete = false;
     while (!iterationComplete)
     {
@@ -759,26 +766,28 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
 
         dim3 numblocksPathSegmentTracing = (numPaths + blockSize1d - 1) / blockSize1d;
-        ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
-            numPaths,
-            dev_paths,
-            dev_geoms,
-            static_cast<int>(hst_scene->geoms.size()),
-            gltfScene,
-            dev_intersections);
-        cudaDeviceSynchronize();
+        TIME_CUDA("intersect",
+            ComputeIntersections KERNEL_ARGS2(numblocksPathSegmentTracing, blockSize1d)(
+                numPaths,
+                dev_paths,
+                dev_geoms,
+                static_cast<int>(hst_scene->geoms.size()),
+                gltfScene,
+                dev_intersections));
+        //cudaDeviceSynchronize();
 
 #ifdef NORMAL
         // normal-debug shading
         {
             const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
-            KernShadeNormal KERNEL_ARGS2(blocksAll, blockSize1d)(
-                iter,
-                numPaths,
-                dev_intersections,
-                dev_materials, 
-                dev_textures,
-                dev_paths);
+            TIME_CUDA("shade_normal",
+                KernShadeNormal KERNEL_ARGS2(blocksAll, blockSize1d)(
+                    iter,
+                    numPaths,
+                    dev_intersections,
+                    dev_materials, 
+                    dev_textures,
+                    dev_paths));
             // checkCUDAError("shade normals");
         }
 #else
@@ -790,18 +799,21 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         }
         else {
             const int blocksAll = (numPaths + blockSize1d - 1) / blockSize1d;
-            KernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
-                iter,
-                numPaths,
-                dev_intersections,
-                dev_paths,
-                dev_materials,
-                dev_textures,
-                *envMap);
+            TIME_CUDA("shade_all_materials",
+                KernShadeAllMaterials KERNEL_ARGS2(blocksAll, blockSize1d)(
+                    iter,
+                    numPaths,
+                    dev_intersections,
+                    dev_paths,
+                    dev_materials,
+                    dev_textures,
+                    *envMap));
         }
 #endif
         if (g_settings.enableStreamCompaction) {
-            PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + numPaths, is_active());
+            PathSegment* mid; 
+            TIME_CUDA("stream_compaction",
+                mid = thrust::partition(thrust::device, dev_paths, dev_paths + numPaths, is_active()));
             numPaths = static_cast<int>(mid - dev_paths);
         }
 
@@ -811,9 +823,11 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     }
 
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_beauty, dev_paths);
+    TIME_CUDA("final_gather",
+        finalGather KERNEL_ARGS2(numBlocksPixels, blockSize1d)(pixelcount, dev_beauty, dev_paths));
 
-    sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_beauty);
+    TIME_CUDA("send_to_pbo",
+        sendImageToPBO KERNEL_ARGS2(blocksPerGrid2d, blockSize2d)(pbo, cam.resolution, iter, dev_beauty));
 
     cudaMemcpy(hst_scene->state.beauty.data(), dev_beauty,
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);

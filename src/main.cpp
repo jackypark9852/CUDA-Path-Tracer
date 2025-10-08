@@ -1,3 +1,4 @@
+#include "cuda_timing.h"
 #include "denoise_optix.h"
 #include "glslUtility.hpp"
 #include "image.h"
@@ -328,7 +329,6 @@ void mainLoop()
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-
         runCuda();
 
         std::string title = "CIS565 Path Tracer | " + UtilityCore::convertIntToString(beautyIters) + " Iterations";
@@ -509,6 +509,7 @@ void saveImages()
 
 void runCuda()
 {
+    cuda_timing_reset();
     if (camchanged)
     {
         beautyIters = 0;
@@ -542,16 +543,20 @@ void runCuda()
 
     if (beautyIters < renderState->beautyIters)
     {
+
         uchar4* pbo_dptr = NULL;
         beautyIters++;
-        cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
+        TIME_CUDA("gl_map_buffer_object", 
+            cudaGLMapBufferObject((void**)&pbo_dptr, pbo));
 
         // execute the kernel
+        
         int frame = 0;
         pathtrace(pbo_dptr, frame, beautyIters);
 
         // unmap buffer object
-        cudaGLUnmapBufferObject(pbo);
+        TIME_CUDA("gl_map_buffer_object",
+            cudaGLUnmapBufferObject(pbo));
     }
     else
     {
@@ -564,6 +569,8 @@ void runCuda()
         cudaDeviceReset();
         exit(EXIT_SUCCESS);
     }
+    cuda_timing_dump_totals_and_reset();
+
 }
 
 //-------------------------------
