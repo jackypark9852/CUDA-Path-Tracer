@@ -7,7 +7,7 @@
 > - Jacky Park
 > - Tested on: Windows 11, i9-13900H @ 2.60 32 GB, RTX 4070 (Laptop GPU) 8 GB (Personal Machine: ROG Zephyrus M16 GU604VI_GU604VI)
 
-This project uses CUDA programming library to implement a GPU path tracer.
+This project uses NVIDIA CUDA programming library to implement a GPU path tracer.
 
 # Representative Outcome
 
@@ -35,7 +35,7 @@ A physically based model for glass, water, and clear plastics. It splits energy 
 
 *metallic–roughness grid (metallic top→bottom, roughness left→right); rightmost column shows **dielectric** spheres with varying **index of refraction**.*
 
-### Image Based Lighting: HDR Environment Map
+### Image-Based Lighting: HDR Environment Map
 
 Lighting can make or break a scene, and hand-crafting it is time-consuming. **HDR environment maps (HDRIs)** are an image-based lighting shortcut: they capture real-world light and color, so the renderer can sample the map instead of terminating rays that miss geometry. This yields believable global illumination and a natural **background** with minimal setup. 
 
@@ -93,7 +93,7 @@ For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo*
 ### Physically-Based Camera: Depth of Field
 A pinhole camera keeps everything razor-sharp, which isn’t how real cameras behave. Real lenses have a focus distance and an aperture, so subjects on the focus plane look crisp while others blur, a classic depth of field you see in film and photography. To achieve this effect, I use a thin-lens shortcut: instead of firing every ray from one point, I sample a random point on a lens disk (size = aperture) and aim at a focus point set by the focus distance. 
 
-It delivers natural, camera-like blur and bokeh with minimal setup—open the aperture for more blur, stop down for less.
+It delivers natural, camera-like blur and bokeh with minimal setup: open the aperture for more blur, stop down for less.
 <table align="center">
   <tr>
     <th>DOF Enabled</th>
@@ -198,9 +198,9 @@ As another optimization, I implemented material-based sorting. Specifically, I s
 </table>
 
 
-In reality though, sorting every bounce introduced significant overhead—key generation, `sort_by_key` passes, scanning to find group boundaries, and multiple kernel launches. In our scenes, the benefit from reduced branching wasn’t large enough to offset these costs. The graph below shows this: total time with material sorting exceeded the baseline despite slight wins inside the shading kernels.
+In reality though, sorting every bounce introduced significant overhead: key generation, `sort_by_key` passes, scanning to find group boundaries, and multiple kernel launches. In our scenes, the benefit from reduced branching wasn’t large enough to offset these costs. The graph below shows this: total time with material sorting exceeded the baseline despite slight wins inside the shading kernels.
 
-The likely culprits are pretty straightforward. With only around eight material buckets, grouping doesn’t buy much—warps still see plenty of variation within a single “material” due to textures, roughness, and IOR differences. On top of that, the per-bounce resorting and relaunching adds a lot of overhead: we’re doing global shuffles of data and paying extra kernel launches at resolutions and paths-per-pixel where those costs dominate. Finally, the memory traffic is nontrivial; reordering zipped arrays (paths, intersections, RNG state, throughput) every bounce is simply expensive.
+The likely culprits are pretty straightforward. With only around eight material buckets, grouping doesn’t buy much; warps still see plenty of variation within a single “material” due to textures, roughness, and IOR differences. On top of that, the per-bounce resorting and relaunching adds a lot of overhead: we’re doing global shuffles of data and paying extra kernel launches at resolutions and paths-per-pixel where those costs dominate. Finally, the memory traffic is nontrivial; reordering zipped arrays (paths, intersections, RNG state, throughput) every bounce is simply expensive.
 
 Still, I think there are scenarios where this approach can help: namely very large scenes with lots of distinct material branches and heavy BSDF divergence. If we go that route, we can consider lighter-weight bucketing/partitioning instead of a full sort (e.g., `thrust::stable_partition` into coarse bins like dielectric, conductor, diffuse) and process those bins sequentially. Binning as a small cascade of partitions, the effective work scales like O(n log M) for M material buckets, whereas a full sort scales like O(n log n) (comparison-based) or O(k n) (radix), so with a small M the binning route often wins. Additionally, we could also reduce churn by sorting less often (every k bounces or after a big drop in active paths).
 
@@ -237,7 +237,7 @@ The model has ~50k triangles. Using a BVH reduced frame time by ~99.3%, about a 
 - [Crow Toy](https://sketchfab.com/3d-models/crow-toy-c6efada51a1d4721b4bee0bdaabdc276)
 - [Mad Android](https://sketchfab.com/3d-models/mad-android-1d932134d0564bd8a9ecf2eb2aec1362)
 - [Coffee Tables Three Legs with Rattan I](https://sketchfab.com/3d-models/coffee-tables-three-legs-with-rattan-i-low-poly-c434f22ec51846cc8142e95f7f2495eb)
-- [F1 2024 Mclaren MCL38](https://sketchfab.com/3d-models/f1-2024-mclaren-mcl38-2950bc595eca43bb86837f25c37ce724)
+- [F1 2024 McLaren MCL38](https://sketchfab.com/3d-models/f1-2024-mclaren-mcl38-2950bc595eca43bb86837f25c37ce724)
 - [Garage](https://sketchfab.com/3d-models/garage-799ae1192db2468facc347f0f31e1bb8)
 - [[Pokémon] Magnemite](https://sketchfab.com/3d-models/pokemon-magnemite-100a13915fd243d0bf35b0c64468984b)
 - [Toy Rocketship](https://sketchfab.com/3d-models/toy-rocketship-94000688843242f79a44686d086663b0)
