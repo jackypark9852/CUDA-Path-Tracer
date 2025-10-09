@@ -152,11 +152,15 @@ The OptiX AI denoiser cleans up Monte Carlo noise so low-spp frames become usabl
 <table align="center">
   <tr>
     <th>Original Image</th>
+  </tr>
+  <tr>
+    <td><img src="img/no-denoise.png" width="720" alt="Original (No Denoise)"></td>
+  </tr>
+  <tr>
     <th>Denoised Image</th>
   </tr>
   <tr>
-    <td><img src="img/graphs/open-stream-compaction.png" width="320" alt="Open Scene"></td>
-    <td><img src="img/graphs/closed-stream-compaction.png" width="320" alt="Closed Scene"></td>
+    <td><img src="img/denoised.png" width="720" alt="Denoised"></td>
   </tr>
 </table>
 
