@@ -439,6 +439,7 @@ static inline glm::vec3 reinhard(glm::vec3 c, float exposure = 1.0f) {
 static inline glm::vec3 to_display(glm::vec3 c) {
     c = aces(c);
     return glm::vec3(linear_to_srgb(c.r), linear_to_srgb(c.g), linear_to_srgb(c.b));
+    //return c; 
 }
 
 
@@ -560,10 +561,10 @@ void runCuda()
     }
     else
     {
-        //normalPass(renderState->aovIters);
-        //albedoPass(renderState->aovIters);
-        //roughnessPass(renderState->aovIters); 
-        //metallicPass(renderState->aovIters); 
+        normalPass(renderState->aovIters);
+        albedoPass(renderState->aovIters);
+        roughnessPass(renderState->aovIters); 
+        metallicPass(renderState->aovIters); 
         saveImages();
         pathtraceFree();
         cudaDeviceReset();
