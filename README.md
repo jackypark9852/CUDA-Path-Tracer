@@ -62,6 +62,24 @@ In this project, these maps come from **glTF**, get uploaded to the GPU, and are
 
 For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo**, **Normal**, **Roughness**, **Metallic**. These views are great for debugging and also serve as guides for the denoiser discussed later.
 
+<table align="center">
+  <tr>
+    <th>Albedo</th>
+    <th>Normal</th>
+  </tr>
+  <tr>
+    <td><img src="img/aov_albedo.png" width="320" alt="Albedo AOV"></td>
+    <td><img src="img/aov_normal.png" width="320" alt="Normal AOV"></td>
+  </tr>
+  <tr>
+    <th>Metallic</th>
+    <th>Roughness</th>
+  </tr>
+  <tr>
+    <td><img src="img/aov_metallic.png" width="320" alt="Metallic AOV"></td>
+    <td><img src="img/aov_roughness.png" width="320" alt="Roughness AOV"></td>
+  </tr>
+</table>
 
 
 ### Physically-Based Camera: Depth of Field
