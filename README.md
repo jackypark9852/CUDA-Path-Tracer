@@ -109,8 +109,9 @@ It delivers natural, camera-like blur and bokeh with minimal setup—open the ap
 
 ### Correct Colors: Image Pre/Post Processing
 Color management is an integral part of the rendering pipeline. It includes converting texture inputs into a **linear** rendering space and converting the final image into the correct **display** space. The article linked [here](https://kinematicsoup.com/news/2016/6/15/gamma-and-linear-space-what-they-are-how-they-differ) illustrates why using the correct color space matters, but in short: for physically correct light transport, all color data must be in **linear** space, where numeric values scale proportionally with radiometric energy.
-
-![color_pipeline](img/color_pipeline.webp)
+<p align="center">
+  <img src="img/color_pipeline.webp" width="720" alt="pbr material balls">
+</p>
 *A side-by-side comparison of a scene shaded with a proper linear workflow versus one shaded in gamma space. The linear workflow preserves accurate light addition and material response, while the non-linear workflow shows incorrect brightness, washed-out highlights, and skewed color relationships. [(Image credit)](https://kinematicsoup.com/news/2016/6/15/gamma-and-linear-space-what-they-are-how-they-differ)*
 
 My renderer works in **sRGB - Linear** color space for shading. Texture images are converted from sRGB to linear on import; the final frames are **ACES** tone-mapped and **gamma-corrected** for display. In the future, a dedicated color-management library like **OpenColorIO (OCIO)** could be integrated to make the path tracer more robust and configurable.
