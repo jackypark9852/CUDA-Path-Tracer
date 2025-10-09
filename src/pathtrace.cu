@@ -177,8 +177,8 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     // compute focal point
     glm::vec3 d_pinhole = glm::normalize(
         cam.view
-        - cam.right * cam.pixelLength.x * (px - 0.5f * float(cam.resolution.x))
-        - cam.up * cam.pixelLength.y * (py - 0.5f * float(cam.resolution.y))
+        - cam.right * cam.pixelLength.x * (x - 0.5f * float(cam.resolution.x))
+        - cam.up * cam.pixelLength.y * (y - 0.5f * float(cam.resolution.y))
     );
 
     float denom = glm::dot(d_pinhole, cam.view);

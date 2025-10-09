@@ -11,12 +11,9 @@ This project uses CUDA programming library to implement a GPU path tracer.
 
 # Representative Outcome
 
-- Toy Scene
-- F1 McLaren
-- Alien
-- Magnemite
-
-# Visual Features
+![toys](img/toys.png)
+![tv](img/tv.png)
+![f1 McLaren](img/f1.png)
 
 ## Rendering Realism: Physically-Based Materials
 
@@ -89,7 +86,7 @@ In practice, the benefit is most obvious on perfectly specular materials. With c
 
 | AA Enabled | AA Disabled |
 | :------: | :------: |
-| ![cornell_wrong](img/graphs/open-stream-compaction.png) | ![cornell_right](img/graphs/closed-stream-compaction.png)  | 
+| ![pbr_aa](img/pbr_aa_enabled.png) | ![pbr_noaa](img/pbr_aa_disabled.png)  | 
 
 ## Performance
 ### Stream Compaction
