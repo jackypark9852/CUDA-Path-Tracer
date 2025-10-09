@@ -40,9 +40,17 @@ Lighting can make or break a scene, and hand-crafting it is time-consuming. **HD
 In this project, I use an equirectangular HDRI and sample it for radiance at the ray’s exit direction; it’s a simple way to get realistic lighting without manual light rigging.
 <div align="center">
 
-| Fireplace (HDRI) | Studio (HDRI) |
-| :------: | :------: |
-| ![rocket_fireplace](img/rocket_fireplace.png) | ![rocket_studio](img/rocket_studio.png)  | 
+<table align="center">
+  <tr>
+    <th>Fireplace (HDRI)</th>
+    <th>Studio (HDRI)</th>
+  </tr>
+  <tr>
+    <td><img src="img/rocket_fireplace.png" width="320" alt="Fireplace HDRI"></td>
+    <td><img src="img/rocket_studio.png" width="320" alt="Studio HDRI"></td>
+  </tr>
+</table>
+
 
 </div>
 
@@ -60,11 +68,17 @@ For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo*
 A pinhole camera keeps everything razor-sharp, which isn’t how real cameras behave. Real lenses have a focus distance and an aperture, so subjects on the focus plane look crisp while others blur, a classic depth of field you see in film and photography. To achieve this effect, I use a thin-lens shortcut: instead of firing every ray from one point, I sample a random point on a lens disk (size = aperture) and aim at a focus point set by the focus distance. 
 
 It delivers natural, camera-like blur and bokeh with minimal setup—open the aperture for more blur, stop down for less.
-| DOF Enabled |
-| :------: |
-| ![magnemite_dof](img/magnemite_dof.png) |
-| DOF Disabled |
-| ![magnemite_nodof](img/magnemite_nodof.png)  | 
+<table align="center">
+  <tr>
+    <th>DOF Enabled</th>
+    <th>DOF Disabled</th>
+  </tr>
+  <tr>
+    <td><img src="img/magnemite_dof.png" width="320" alt="DOF Enabled"></td>
+    <td><img src="img/magnemite_nodof.png" width="320" alt="DOF Disabled"></td>
+  </tr>
+</table>
+
 
 
 ### Correct Colors: Image Pre/Post Processing
@@ -75,18 +89,33 @@ Color management is an integral part of the rendering pipeline. It includes conv
 
 My renderer works in **sRGB - Linear** color space for shading. Texture images are converted from sRGB to linear on import; the final frames are **ACES** tone-mapped and **gamma-corrected** for display. In the future, a dedicated color-management library like **OpenColorIO (OCIO)** could be integrated to make the path tracer more robust and configurable.
 
-| No Post-Process | Post-Process |
-| :------: | :------: |
-| ![cornell_wrong](img/cornell_wrong.png) | ![cornell_right](img/cornell_aces.png)  | 
+<table align="center">
+  <tr>
+    <th>No Post-Process</th>
+    <th>Post-Process</th>
+  </tr>
+  <tr>
+    <td><img src="img/cornell_wrong.png" width="320" alt="No Post-Process"></td>
+    <td><img src="img/cornell_aces.png" width="320" alt="Post-Process (ACES)"></td>
+  </tr>
+</table>
 
 ### Stochastic Anti-aliasing
 So far, each camera ray was aimed at the exact center of its pixel. This regular sampling is prone to aliasing, which shows up as jagged edges and shimmering on high-frequency detail (see image 1). The fix is simple: stochastic anti-aliasing. Jitter the ray’s target within the pixel footprint so each iteration samples a slightly different sub-pixel position, then average those samples over many iterations to approximate the pixel’s true integral and smooth edges.
 
 In practice, the benefit is most obvious on perfectly specular materials. With center-only sampling, rays launch in the same direction, reflect in the same direction, and accumulate the same radiance, so specular highlights and edges alias badly. Jittered sampling decorrelates those paths, produces varied sub-pixel samples, and yields a much cleaner, more stable result after averaging.
 
-| AA Enabled | AA Disabled |
-| :------: | :------: |
-| ![pbr_aa](img/pbr_aa_enabled.png) | ![pbr_noaa](img/pbr_aa_disabled.png)  | 
+<table align="center">
+  <tr>
+    <th>AA Enabled</th>
+    <th>AA Disabled</th>
+  </tr>
+  <tr>
+    <td><img src="img/pbr_aa_enabled.png" width="320" alt="AA Enabled"></td>
+    <td><img src="img/pbr_aa_disabled.png" width="320" alt="AA Disabled"></td>
+  </tr>
+</table>
+
 
 ## Performance
 ### Stream Compaction
@@ -94,19 +123,33 @@ The basic loop in a path tracer shoots paths from the camera: one per pixel. On 
 
 A simple optimization is **stream compaction**: after each bounce, remove “dead” paths from the work list so the next kernel launch uses exactly the number of still-alive paths. In this path tracer, we compact by splitting live and dead paths each iteration with `thrust::partition`. This introduces overhead in lockstep, so it only pays off when a substantial fraction of paths have already terminated. 
 
-| Open Scene | Closed Scene |
-| :------: | :------: |
-| ![cornell_wrong](img/graphs/open-stream-compaction.png) | ![cornell_right](img/graphs/closed-stream-compaction.png)  | 
+<table align="center">
+  <tr>
+    <th>Open Scene</th>
+    <th>Closed Scene</th>
+  </tr>
+  <tr>
+    <td><img src="img/graphs/open-stream-compaction.png" width="320" alt="Open Scene"></td>
+    <td><img src="img/graphs/closed-stream-compaction.png" width="320" alt="Closed Scene"></td>
+  </tr>
+</table>
 
 The graph above shows this effect: as the dead-ray percentage rises (in the open scene), total render time drops faster than the compaction overhead grows, yielding a net speedup; when survival stays high, compaction can hurt.
 
 ### Material Sorting
 As another optimization, I implemented material-based sorting. Specifically, I sort active paths by their intersected material type (e.g., PBR, diffuse, dielectric) using `thrust::sort_by_key`, then launch a separate kernel per material group. The idea is to use smaller, specialized kernels (one material per kernel) instead of a mega-kernel, which should reduce branch divergence and improve cache/memory coherence.
 
-The results, however, were less than ideal: 
-| Test Scene | Test Result |
-| :------: | :------: |
-| ![cornell_wrong](img/magnemite_closed.png) | ![cornell_right](img/graphs/material-sort.png   )  | 
+<table align="center">
+  <tr>
+    <th>Test Scene</th>
+    <th>Test Result</th>
+  </tr>
+  <tr>
+    <td><img src="img/magnemite_closed.png" width="260" alt="Test Scene"></td>
+    <td><img src="img/graphs/material-sort.png" width="450" alt="Material Sorting Result"></td>
+  </tr>
+</table>
+
 
 In reality though, sorting every bounce introduced significant overhead—key generation, `sort_by_key` passes, scanning to find group boundaries, and multiple kernel launches. In our scenes, the benefit from reduced branching wasn’t large enough to offset these costs. The graph below shows this: total time with material sorting exceeded the baseline despite slight wins inside the shading kernels.
 
@@ -119,9 +162,17 @@ Finally, the most significant optimization for supporting arbitrary, high-poly m
 
 We can see the benefit clearly in the test below:
 
-| Test Scene | Test Result |
-| :------: | :------: |
-| ![cornell_wrong](img/magnemite_open.png) | ![cornell_right](img/graphs/bvh.png)  | 
+<table align="center">
+  <tr>
+    <th>Test Scene</th>
+    <th>Test Result</th>
+  </tr>
+  <tr>
+    <td><img src="img/magnemite_open.png" width="260" alt="Test Scene (BVH)"></td>
+    <td><img src="img/graphs/bvh.png" width="450" alt="BVH Speedup Graph"></td>
+  </tr>
+</table>
+
 
 The model has ~50k triangles. Using a BVH reduced frame time by ~99.3%, about a 131× speedup.
 
