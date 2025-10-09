@@ -13,8 +13,8 @@
         "RES":[1920, 1080],
         "FOVY":45.0,
         "ITERATIONS":5000,
-        "DEPTH":1,
-        "FILE":"magnemite",
+        "DEPTH":12,
+        "FILE":"f1",
         "EYE":[-3.0,-2.0, 12],
         "LOOKAT":[0.0,0.0,0.0],
         "UP":[0.0,1.0,0.0]

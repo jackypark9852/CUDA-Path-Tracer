@@ -1,0 +1,43 @@
+{
+  "Materials": {
+    "diffuse_white": {
+      "TYPE": "Diffuse",
+      "RGB": [ 0.729, 0.729, 0.729 ]
+    }
+  },
+
+  "Objects": [
+    {
+      "TYPE": "cube",
+      "MATERIAL": "diffuse_white",
+      "TRANS": [ 0.0, 0.0, 0.0 ],
+      "ROTAT": [ 0.0, 0.0, 0.0 ],
+      "SCALE": [ 100.0, 0.01, 100.0 ]
+    }
+  ],
+
+  "Camera": {
+    "RES": [ 1920, 1080 ],
+    "FOVY": 45.0,
+    "ITERATIONS": 1000,
+    "DEPTH": 12,
+    "FILE": "android",
+    "EYE": [ 0.0, 10.0, 10.5 ],
+    "LOOKAT": [ 0.0, 10.0, 0.0 ],
+    "UP": [ 0.0, 1.0, 0.0 ]
+  },
+
+
+  "Imports": [
+    {
+      "PATH": "./models/android/scene.gltf",
+      "TRANS": [ 0.0, 0.0, 0.0 ],
+      "ROTAT": [ 0.0, -180.0, 0.0 ],
+      "SCALE": [ 10, 10, 10 ]
+    }
+  ],
+
+  "EnvironmentMap": {
+    "Path": "./textures/brown_photostudio_02_4k.hdr"
+  }
+}
