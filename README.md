@@ -29,7 +29,9 @@ An artist-friendly workflow driven by **base color (albedo)**, **metallic**, **r
 
 A physically based model for glass, water, and clear plastics. It splits energy between reflection and refraction using Fresnel (Schlick) with a chosen index of refraction.
 
-![pbr material balls](img/pbr.png)
+<p align="center">
+  <img src="img/pbr.png" width="720" alt="pbr material balls">
+</p>
 
 *metallic–roughness grid (metallic top→bottom, roughness left→right); rightmost column shows **dielectric** spheres with varying **index of refraction**.*
 
@@ -62,11 +64,11 @@ In this project, these maps come from **glTF**, get uploaded to the GPU, and are
 
 For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo**, **Normal**, **Roughness**, **Metallic**. These views are great for debugging and also serve as guides for the denoiser discussed later.
 
-<table align="center" width="80%">
+<table align="center" width="70%">
   <tr>
     <th colspan="2" style="text-align:center;">
-      <img src="img/tv.png" width="100%" alt="Beauty Render">
       <div style="font-size:12px; font-weight:normal; margin-top:4px;">Beauty</div>
+      <img src="img/tv.png" width="100%" alt="Beauty Render">
     </th>
   </tr>
   <tr>
@@ -74,16 +76,16 @@ For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo*
     <th>Normal</th>
   </tr>
   <tr>
-    <td><img src="img/aov_albedo.png" width="48%" alt="Albedo AOV"></td>
-    <td><img src="img/aov_normal.png" width="48%" alt="Normal AOV"></td>
+    <td><img src="img/aov_albedo.png" width="100%" alt="Albedo AOV"></td>
+    <td><img src="img/aov_normal.png" width="100%" alt="Normal AOV"></td>
   </tr>
   <tr>
     <th>Metallic</th>
     <th>Roughness</th>
   </tr>
   <tr>
-    <td><img src="img/aov_metallic.png" width="48%" alt="Metallic AOV"></td>
-    <td><img src="img/aov_roughness.png" width="48%" alt="Roughness AOV"></td>
+    <td><img src="img/aov_metallic.png" width="100%" alt="Metallic AOV"></td>
+    <td><img src="img/aov_roughness.png" width="100%" alt="Roughness AOV"></td>
   </tr>
 </table>
 
