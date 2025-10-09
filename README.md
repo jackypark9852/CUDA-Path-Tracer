@@ -112,6 +112,7 @@ Color management is an integral part of the rendering pipeline. It includes conv
 <p align="center">
   <img src="img/color_pipeline.webp" width="720" alt="pbr material balls">
 </p>
+
 *A side-by-side comparison of a scene shaded with a proper linear workflow versus one shaded in gamma space. The linear workflow preserves accurate light addition and material response, while the non-linear workflow shows incorrect brightness, washed-out highlights, and skewed color relationships. [(Image credit)](https://kinematicsoup.com/news/2016/6/15/gamma-and-linear-space-what-they-are-how-they-differ)*
 
 My renderer works in **sRGB - Linear** color space for shading. Texture images are converted from sRGB to linear on import; the final frames are **ACES** tone-mapped and **gamma-corrected** for display. In the future, a dedicated color-management library like **OpenColorIO (OCIO)** could be integrated to make the path tracer more robust and configurable.
@@ -143,6 +144,21 @@ In practice, the benefit is most obvious on perfectly specular materials. With c
   </tr>
 </table>
 
+### NVIDIA OptiX AI Denoising 
+So we spent a long time rendering, but there is still noise and fireflies in the scene (ouch!). How can we further improve the quality of the render? The usual next step is denoising, and for this project I tried NVIDIA OptiX since I am on NVIDIA hardware and want to get some value out of the $$$ GPU. 
+
+The OptiX AI denoiser cleans up Monte Carlo noise so low-spp frames become usable much sooner, taking the noisy beauty pass and using albedo and normal AOVs as guides to preserve broad color regions and surface edges while smoothing speckle. In my tests it is strongest on diffuse surfaces where the signal is low frequency and the guides align with the final look. The downsides are clear: high-frequency detail from roughness variation or fine albedo texture can get smudged, especially at small resolutions. Rendering at higher resolutions like 2K or 4K helps a bit because textures resolve more cleanly before denoising. Overall it is a great productivity tool, but I keep a higher-spp or higher-res reference for shots with lots of micro detail.
+
+<table align="center">
+  <tr>
+    <th>Original Image</th>
+    <th>Denoised Image</th>
+  </tr>
+  <tr>
+    <td><img src="img/graphs/open-stream-compaction.png" width="320" alt="Open Scene"></td>
+    <td><img src="img/graphs/closed-stream-compaction.png" width="320" alt="Closed Scene"></td>
+  </tr>
+</table>
 
 ## Performance
 ### Stream Compaction
@@ -202,5 +218,32 @@ We can see the benefit clearly in the test below:
 
 
 The model has ~50k triangles. Using a BVH reduced frame time by ~99.3%, about a 131× speedup.
+
+# Credits
+## Third Party Code 
+- [CIS5650 - GPU Programming and Architecture (Base code)](https://github.com/CIS5650-Fall-2025/Project3-CUDA-Path-Tracer)
+- [TinyGltf](https://github.com/syoyo/tinygltf)
+- [GLM](https://github.com/g-truc/glm)
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
+- [NVIDIA OptiX™ AI-Accelerated Denoiser](https://developer.nvidia.com/optix-denoiser)
+
+## 3D Models 
+- [The Stanford 3D Scanning Repository](https://graphics.stanford.edu/data/3Dscanrep/)
+- [Gizmoduck](https://sketchfab.com/3d-models/gizmoduck-toy-5c4238bd85f645ed84b7bec2b567320c)
+- [Crow Toy](https://sketchfab.com/3d-models/crow-toy-c6efada51a1d4721b4bee0bdaabdc276)
+- [Mad Android](https://sketchfab.com/3d-models/mad-android-1d932134d0564bd8a9ecf2eb2aec1362)
+- [Coffee Tables Three Legs with Rattan I](https://sketchfab.com/3d-models/coffee-tables-three-legs-with-rattan-i-low-poly-c434f22ec51846cc8142e95f7f2495eb)
+- [F1 2024 Mclaren MCL38](https://sketchfab.com/3d-models/f1-2024-mclaren-mcl38-2950bc595eca43bb86837f25c37ce724)
+- [Garage](https://sketchfab.com/3d-models/garage-799ae1192db2468facc347f0f31e1bb8)
+- [[Pokémon] Magnemite](https://sketchfab.com/3d-models/pokemon-magnemite-100a13915fd243d0bf35b0c64468984b)
+- [Toy Rocketship](https://sketchfab.com/3d-models/toy-rocketship-94000688843242f79a44686d086663b0)
+- [Television 01](https://polyhaven.com/a/Television_01)
+
+## HDRIs
+- [Brown Photostudio 01](https://polyhaven.com/a/brown_photostudio_01)
+- [Fireplace](https://polyhaven.com/a/fireplace) 
+- [Christmas Photo Studio 01](https://polyhaven.com/a/christmas_photo_studio_01)
+- [Klippad Sunrise 1](https://polyhaven.com/a/klippad_sunrise_1)
+- [Studio Small 09](https://polyhaven.com/a/studio_small_09)
 
 
