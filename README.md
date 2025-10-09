@@ -62,22 +62,28 @@ In this project, these maps come from **glTF**, get uploaded to the GPU, and are
 
 For inspection, I output **AOVs (Arbitrary Output Variables) -** e.g., **Albedo**, **Normal**, **Roughness**, **Metallic**. These views are great for debugging and also serve as guides for the denoiser discussed later.
 
-<table align="center">
+<table align="center" width="80%">
+  <tr>
+    <th colspan="2" style="text-align:center;">
+      <img src="img/tv.png" width="100%" alt="Beauty Render">
+      <div style="font-size:12px; font-weight:normal; margin-top:4px;">Beauty</div>
+    </th>
+  </tr>
   <tr>
     <th>Albedo</th>
     <th>Normal</th>
   </tr>
   <tr>
-    <td><img src="img/aov_albedo.png" width="320" alt="Albedo AOV"></td>
-    <td><img src="img/aov_normal.png" width="320" alt="Normal AOV"></td>
+    <td><img src="img/aov_albedo.png" width="48%" alt="Albedo AOV"></td>
+    <td><img src="img/aov_normal.png" width="48%" alt="Normal AOV"></td>
   </tr>
   <tr>
     <th>Metallic</th>
     <th>Roughness</th>
   </tr>
   <tr>
-    <td><img src="img/aov_metallic.png" width="320" alt="Metallic AOV"></td>
-    <td><img src="img/aov_roughness.png" width="320" alt="Roughness AOV"></td>
+    <td><img src="img/aov_metallic.png" width="48%" alt="Metallic AOV"></td>
+    <td><img src="img/aov_roughness.png" width="48%" alt="Roughness AOV"></td>
   </tr>
 </table>
 
