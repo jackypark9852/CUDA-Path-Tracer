@@ -6,7 +6,7 @@
         "mat_03": { "TYPE": "Pbr", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.608, "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 0.0 },
         "mat_04": { "TYPE": "Pbr", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 0.804, "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 0.0 },
         "mat_05": { "TYPE": "Pbr", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.0, "ROUGHNESS": 1.0,   "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 0.0 },
-        "mat_06": { "TYPE": "Pbr", "RGB": [1.0, 1.0, 1.0], "METALLIC": 0.0, "ROUGHNESS": 0.0,   "IOR": 1.2, "EMITTANCE": 0.0, "TRANSMISSIVE": 1.0 },
+        "mat_06": { "TYPE": "Pbr", "RGB": [1.0, 1.0, 1.0], "METALLIC": 0.0, "ROUGHNESS": 0.0,   "IOR": 1.4, "EMITTANCE": 0.0, "TRANSMISSIVE": 1.0 },
 
         "mat_10": { "TYPE": "Pbr", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.02,  "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 0.0 },
         "mat_11": { "TYPE": "Pbr", "RGB": [0.7, 0.5, 0.2], "METALLIC": 0.2, "ROUGHNESS": 0.216, "IOR": 1.5, "EMITTANCE": 0.0, "TRANSMISSIVE": 0.0 },
@@ -51,10 +51,10 @@
 
     "Camera":
     {
-        "RES":[800, 800],
+        "RES":[1080, 1080],
         "FOVY":30.0,
         "ITERATIONS":5000,
-        "DEPTH":8,
+        "DEPTH":20,
         "FILE":"pbr",
         "EYE":[1.5, 0.0, 30.0],
         "LOOKAT":[1.5,0.0,10.0],

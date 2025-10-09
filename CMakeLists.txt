@@ -52,6 +52,7 @@ include_directories(${GLM_INCLUDE_DIRS})
 
 set(headers
     src/bvh.h
+    src/cuda_timing.h
     src/denoise_optix.h
     src/image.h
     src/interactions.h
@@ -71,6 +72,7 @@ set(headers
 
 set(sources
     src/bvh.cpp
+    src/cuda_timing.cpp
     src/denoise_optix.cpp
     src/main.cpp
     src/stb.cpp
